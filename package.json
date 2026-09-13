@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch src/server/index.ts",
+    "dev:server": "node --watch --import tsx src/server/index.ts",
     "dev:web": "vite",
     "build": "npm run build:server && npm run build:web",
     "build:server": "tsc -p tsconfig.server.json",

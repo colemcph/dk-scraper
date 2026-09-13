@@ -48,6 +48,10 @@ npm run dev
 - UI: <http://localhost:5173> (Vite dev server, proxies `/api` to the backend)
 - API: <http://localhost:3000/api/odds> · stream: <http://localhost:3000/api/stream>
 
+`npm run dev` runs the API (`node --watch --import tsx`) and Vite side by side. The first browser connection can land a second before the API is up; the page's `EventSource` retries by itself.
+
+> **Windows / PowerShell:** if you see `running scripts is disabled on this system`, that's PowerShell's execution policy blocking `npm.ps1`, not the project. Either use `npm.cmd ci` / `npm.cmd run dev`, or run once `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
 Production build (what Render runs):
 
 ```bash
