@@ -41,7 +41,8 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
             {lat && lat.samples > 0 ? (
               <>
                 inside DraftKings p50 <strong>{formatMs(lat.pipelineP50Ms)}</strong> · network p50{' '}
-                <strong>{formatMs(lat.transportP50Ms)}</strong> (min {formatMs(lat.transportMinMs)}) ·{' '}
+                <strong>{formatMs(lat.transportP50Ms)}</strong> (min {formatMs(lat.transportMinMs)})
+                ·{' '}
                 <span className={lat.negativeTransportSamples > 0 ? 'warn-text' : ''}>
                   self-check: {lat.negativeTransportSamples} negative of {lat.samples}
                 </span>
@@ -75,7 +76,8 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
                 {lat.clockSkewMs >= 0 ? '+' : ''}
                 {lat.clockSkewMs} ms{' '}
                 <span className="muted">
-                  ({lat.skewSource === 'tracked' ? 'tracked from frames' : 'from subscribe ack'}, RTT {lat.skewRttMs} ms)
+                  ({lat.skewSource === 'tracked' ? 'tracked from frames' : 'from subscribe ack'},
+                  RTT {lat.skewRttMs} ms)
                 </span>
               </>
             ) : (

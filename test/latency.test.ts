@@ -48,7 +48,11 @@ describe('LatencyTracker', () => {
     for (let i = 0; i < 6; i++) {
       const published = dk + i * 1000;
       const received = published - 2000 + 20; // our clock
-      t.record(new Date(published - 30).toISOString(), new Date(published).toISOString(), new Date(received).toISOString());
+      t.record(
+        new Date(published - 30).toISOString(),
+        new Date(published).toISOString(),
+        new Date(received).toISOString(),
+      );
     }
     expect(t.stats().skewSource).toBe('tracked');
     expect(t.stats().clockSkewMs).toBe(2000);
@@ -59,14 +63,22 @@ describe('LatencyTracker', () => {
     for (let i = 6; i < 20; i++) {
       const published = dk + i * 1000;
       const received = published - 1500 + 20;
-      t.record(new Date(published - 30).toISOString(), new Date(published).toISOString(), new Date(received).toISOString());
+      t.record(
+        new Date(published - 30).toISOString(),
+        new Date(published).toISOString(),
+        new Date(received).toISOString(),
+      );
     }
     expect(t.stats().clockSkewMs).toBe(2000); // min(d) still remembers the pre-step frames...
     // ...until they age out of the window: replay the post-step frames with later timestamps.
     for (let i = 0; i < 12; i++) {
       const published = dk + 11 * 60_000 + i * 1000;
       const received = published - 1500 + 20;
-      t.record(new Date(published - 30).toISOString(), new Date(published).toISOString(), new Date(received).toISOString());
+      t.record(
+        new Date(published - 30).toISOString(),
+        new Date(published).toISOString(),
+        new Date(received).toISOString(),
+      );
     }
     expect(t.stats().clockSkewMs).toBe(1500);
   });

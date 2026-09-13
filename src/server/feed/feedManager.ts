@@ -359,7 +359,8 @@ export class FeedManager {
     const base = this.opts.config.unresolvedResyncDelayMs ?? 5_000;
     const now = this.now();
     if (now - this.lastUnresolvedAt > 2 * 60_000) this.unresolvedDelayMs = 0;
-    this.unresolvedDelayMs = this.unresolvedDelayMs === 0 ? base : Math.min(60_000, this.unresolvedDelayMs * 2);
+    this.unresolvedDelayMs =
+      this.unresolvedDelayMs === 0 ? base : Math.min(60_000, this.unresolvedDelayMs * 2);
     this.lastUnresolvedAt = now;
     this.timers.unresolved = setTimeout(() => {
       this.timers.unresolved = undefined;
