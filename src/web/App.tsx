@@ -4,7 +4,7 @@ import { OddsTable } from './components/OddsTable.js';
 import { RecentMoves } from './components/RecentMoves.js';
 import { displayState, StatusStrip } from './components/StatusStrip.js';
 import { useOddsFeed } from './hooks/useOddsFeed.js';
-import { localTimeZoneLabel, type OddsFormat } from './lib/format.js';
+import { localTimeZoneLabel, percentile, type OddsFormat } from './lib/format.js';
 
 const FORMAT_KEY = 'odds-format';
 
@@ -14,12 +14,6 @@ function loadFormat(): OddsFormat {
   } catch {
     return 'american';
   }
-}
-
-function percentile(values: number[], p: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))] ?? null;
 }
 
 export function App() {

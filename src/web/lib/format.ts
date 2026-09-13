@@ -85,6 +85,13 @@ export function formatMs(ms: number | null | undefined): string {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
+/** Nearest-rank percentile; null for an empty sample. */
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))] ?? null;
+}
+
 export const MARKET_LABEL: Record<MarketType, string> = {
   moneyline: 'Moneyline',
   spread: 'Spread',

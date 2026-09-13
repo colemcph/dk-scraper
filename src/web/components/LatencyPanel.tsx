@@ -1,17 +1,11 @@
 import type { FeedMeta } from '../../shared/types.js';
-import { formatMs } from '../lib/format.js';
+import { formatMs, percentile } from '../lib/format.js';
 
 interface Props {
   meta: FeedMeta | null;
   browserLegSamples: number[];
   clockOffsetMs: number | null;
   clockRttMs: number | null;
-}
-
-function percentile(values: number[], p: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))] ?? null;
 }
 
 export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttMs }: Props) {

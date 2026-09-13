@@ -13,10 +13,10 @@ interface Props {
   format: OddsFormat;
 }
 
+/** DraftKings createdTime -> this browser. The server emits synchronously after applying, so there is no separate server-hold term. */
 function endToEnd(move: RecentMove): number | null {
   if (!move.latency) return null;
-  const serverHold = 0; // emitted synchronously after apply; not measured separately
-  return move.latency.dkToServerMs + serverHold + (move.serverToBrowserMs ?? 0);
+  return move.latency.dkToServerMs + (move.serverToBrowserMs ?? 0);
 }
 
 export function RecentMoves({ moves, format }: Props) {
