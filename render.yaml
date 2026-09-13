@@ -18,10 +18,10 @@ services:
       - key: DK_WS_REGION
         value: ca-on
       - key: DK_LEAGUE_ID
-        value: "88808"
+        value: '88808'
       - key: DK_LEAGUE_NAME
         value: NFL
       - key: DK_SUBCATEGORY_ID
-        value: "4518"
+        value: '4518'
       - key: LOG_LEVEL
         value: info
