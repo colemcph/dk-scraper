@@ -66,7 +66,7 @@ function harness() {
     handlers,
     logger: silentLogger,
     retryBaseMs: 1000,
-    retryMaxMs: 30000,
+    retryMaxMs: 15000,
     pingIntervalMs: 15000,
     inactivityTimeoutMs: 45000,
     socketFactory: (url) => {

@@ -28,7 +28,7 @@ Short, dated records of the choices that shaped this project and the evidence be
 
 **Decision:** Node, not Python.
 
-**Why:** evidence, not preference — Node's HTTP/WS stack passes Akamai's fingerprint check as-is; Python's common clients would need impersonation libraries. One language for server, socket client and UI. Built-in `fetch` and `WebSocket` keep the dependency list at four runtime packages.
+**Why:** evidence, not preference — Node's HTTP/WS stack passes Akamai's fingerprint check as-is; Python's common clients would need impersonation libraries. One language for server, socket client and UI. Built-in `fetch` keeps the runtime dependency list short (`hono`, `@hono/node-server`, `ws`, `zod`, `react`, `react-dom`).
 
 ## 2026-09-12 — Ontario site key
 

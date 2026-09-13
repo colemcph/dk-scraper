@@ -41,6 +41,8 @@ export interface DeltaResult extends ChangeSet {
 
 /** How long we remember that the socket touched a position, for snapshot/delta ordering. */
 const SEEN_TTL_MS = 10 * 60_000;
+/** An NFL game is over well within this; guards against unrecognised "finished" status strings. */
+const MAX_GAME_AGE_MS = 6 * 60 * 60_000;
 
 function sameSide(a: Side, b: Side): boolean {
   return (
@@ -129,10 +131,14 @@ export class OddsStore {
     return this.games.get(id);
   }
 
-  /** Games worth showing, kickoff order. Finished games are kept internally until the next snapshot drops them. */
-  list(): Game[] {
+  /**
+   * Games worth showing, kickoff order. Finished games are kept internally until the next
+   * snapshot drops them. A game that kicked off more than MAX_GAME_AGE_MS ago is hidden even if
+   * DraftKings' status string was one we don't recognise (unknown strings map to "upcoming").
+   */
+  list(now = Date.now()): Game[] {
     return [...this.games.values()]
-      .filter((g) => g.status !== 'finished')
+      .filter((g) => g.status !== 'finished' && now - Date.parse(g.startTime) < MAX_GAME_AGE_MS)
       .sort(
         (a, b) =>
           a.startTime.localeCompare(b.startTime) ||

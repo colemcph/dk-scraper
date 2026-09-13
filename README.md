@@ -9,7 +9,7 @@
 | Question in the brief                    | Answer                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | How do you get the data?                 | The two channels DraftKings' own web client uses: their **snapshot API** (`sportsbook-nash.draftkings.com/api/sportscontent/…`) to bootstrap and resync, and their **push WebSocket** (`sportsbook-ws-ca-on.draftkings.com/websocket`, JSON-RPC 2.0) for deltas. No headless browser, no third-party odds API. Reverse-engineered from their `dk-data-layer` bundle. |
-| How old is the number on the screen?     | Sub-second on the push path. Measured tonight on in-play games: **DraftKings odds engine → this screen p50 ≈ 0.3 s, p95 ≈ 0.6 s** (see [Freshness](#how-fresh-are-the-odds)). The page shows the live number, computed from DraftKings' own `createdTime` stamp with clock-skew correction — not a poll interval.                                                    |
+| How old is the number on the screen?     | Sub-second on the push path. Measured on in-play games: **DraftKings odds engine → this screen ≈ 50–300 ms p50, ≈ 0.5 s p95**, decomposed against DraftKings' own timestamps with a self-check the page displays (see [Freshness](#how-fresh-are-the-odds)). Not a poll interval.                                                                                    |
 | Auth, cookies, geo, bot protection?      | No login/token/cookie is needed. What I hit: **Akamai TLS fingerprinting** (curl → 403, Node → 200), a Canadian IP being served the Ontario product, and a msgpack-by-default socket that also speaks JSON. Details in [What I hit](#what-i-hit-and-how-i-got-around-it).                                                                                            |
 | Snapshot or delta?                       | Both: the REST API is a full picture every time; the socket is **deltas only** — changed selections arrive without a market id and line moves arrive as a _new_ selection id with `replacedSelectionId`. The store keeps indices to place them and asks for a resync if it ever can't. See [Shape of the data](#shape-of-the-data).                                  |
 | Doesn't break when DraftKings misbehaves | Lenient validation, backoff, socket→polling fallback, last-known-good always served, and a UI that says LIVE / POLLING / STALE / DEGRADED instead of quietly showing old numbers. See [Failure modes](#failure-modes).                                                                                                                                               |
@@ -252,7 +252,7 @@ Everything above is exercised in `test/store.test.ts` and `test/normalize.test.t
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | DraftKings unreachable at startup (403/5xx/timeout) | Retries with jittered backoff (1 → 30 s); serves an empty state as `degraded`                             | "Waiting for DraftKings… retrying" with the last error   |
 | REST fails after startup                            | Keeps last-known-good; socket keeps running; `lastSnapshotAt` ages                                        | Table intact; last error in the latency panel            |
-| Socket closes (`1000/1006/1013/4001/4002`)          | Reconnects with backoff, resubscribes, then resyncs to fill the gap                                       | LIVE → RECONNECTING → LIVE                               |
+| Socket closes (`1000/1006/1013/4001/4002`)          | Reconnects with jittered backoff (1 s → 15 s cap), resubscribes, then resyncs to fill the gap             | LIVE → RECONNECTING → LIVE                               |
 | Socket down > 15 s                                  | POLLING every 3 s; keeps trying the socket in the background                                              | Amber POLLING pill                                       |
 | Socket alive but silent                             | Ping every 15 s; forced reconnect after 45 s idle; 60 s resync catches anything missed (counted as drift) | Nothing, unless it crosses the stale threshold           |
 | Delta references an unknown id                      | Counted (`unresolvedDeltas`), resync scheduled                                                            | Nothing — the resync heals it                            |
@@ -281,26 +281,28 @@ Everything above is exercised in `test/store.test.ts` and `test/normalize.test.t
 
 ## Configuration
 
-| Variable                  | Default        | Meaning                                                            |
-| ------------------------- | -------------- | ------------------------------------------------------------------ |
-| `DK_SITE`                 | `dkcaon`       | DraftKings site key (Ontario). US: `dkusoh`, `dkusnj`, `dkuswv`, … |
-| `DK_WS_REGION`            | `ca-on`        | Socket host: `sportsbook-ws-{region}.draftkings.com`               |
-| `DK_LEAGUE_ID`            | `88808`        | NFL. (MLB `84240`, handy for testing on a weeknight)               |
-| `DK_SUBCATEGORY_ID`       | `4518`         | "Game" under "Game Lines" = the main markets. (MLB `4519`)         |
-| `RESYNC_INTERVAL_MS`      | `60000`        | Snapshot cadence while live (liveness proof + drift check)         |
-| `POLL_INTERVAL_MS`        | `3000`         | Snapshot cadence when the socket is unavailable                    |
-| `WS_FALLBACK_AFTER_MS`    | `15000`        | How long to wait for the socket before polling                     |
-| `STALE_AFTER_MS`          | `90000`        | No successful DraftKings exchange for this long ⇒ stale            |
-| `HEARTBEAT_INTERVAL_MS`   | `10000`        | SSE heartbeat                                                      |
-| `REFRESH_MIN_INTERVAL_MS` | `5000`         | Global rate limit for the Refresh button                           |
-| `PORT`, `LOG_LEVEL`       | `3000`, `info` |                                                                    |
+| Variable                        | Default        | Meaning                                                            |
+| ------------------------------- | -------------- | ------------------------------------------------------------------ |
+| `DK_SITE`                       | `dkcaon`       | DraftKings site key (Ontario). US: `dkusoh`, `dkusnj`, `dkuswv`, … |
+| `DK_WS_REGION`                  | `ca-on`        | Socket host: `sportsbook-ws-{region}.draftkings.com`               |
+| `DK_LEAGUE_ID`                  | `88808`        | NFL. (MLB `84240`, handy for testing on a weeknight)               |
+| `DK_SUBCATEGORY_ID`             | `4518`         | "Game" under "Game Lines" = the main markets. (MLB `4519`)         |
+| `RESYNC_INTERVAL_MS`            | `60000`        | Snapshot cadence while live (liveness proof + drift check)         |
+| `POLL_INTERVAL_MS`              | `3000`         | Snapshot cadence when the socket is unavailable                    |
+| `WS_FALLBACK_AFTER_MS`          | `15000`        | How long to wait for the socket before polling                     |
+| `STALE_AFTER_MS`                | `90000`        | No successful DraftKings exchange for this long ⇒ stale            |
+| `HEARTBEAT_INTERVAL_MS`         | `10000`        | SSE heartbeat                                                      |
+| `DK_REST_BASE_URL`, `DK_WS_URL` | unset          | Point the app at a mock DraftKings (what `npm run chaos` does)     |
+| `REFRESH_MIN_INTERVAL_MS`       | `5000`         | Global rate limit for the Refresh button                           |
+| `PORT`, `LOG_LEVEL`             | `3000`, `info` |                                                                    |
 
 ---
 
 ## Testing
 
 ```bash
-npm test          # vitest, 50 tests, < 1 s
+npm test          # vitest, 54 tests, < 1 s
+npm run chaos     # end-to-end resilience run against a mock DraftKings (~45 s, offline)
 npm run lint      # eslint (typescript-eslint strict-ish)
 npm run typecheck # server (NodeNext) + web (bundler) projects
 ```
@@ -311,6 +313,24 @@ npm run typecheck # server (NodeNext) + web (bundler) projects
 - `test/ws.test.ts` — the socket client with a fake socket: subscribe payload, NTP-style skew from the ack, malformed frames, exponential backoff and reset, silence watchdog, clean stop.
 - `test/sse.test.ts` — snapshot on connect, versioned deltas, heartbeats, `Last-Event-ID` replay vs. fresh snapshot, dropping dead clients.
 - `test/latency.test.ts` — skew correction math, continuous skew tracking across a clock step, and percentiles.
+
+### Chaos run (end-to-end, no DraftKings involved)
+
+`scripts/chaos.ts` starts a fake snapshot API and a fake socket on localhost, points the **real built server** at them (`DK_REST_BASE_URL`, `DK_WS_URL`), and walks it through the failure modes the brief asks about, reporting what `/healthz` and `/api/odds` say at each step. CI runs it on every push. Output from the run that accompanied this README:
+
+```
+1a boot: snapshot from mock                          state=live         stale=false games=75  DET ML=-325
+1b socket pushed DET ML -> -300                      state=live         stale=false games=75  DET ML=-300
+2a socket killed                                     state=reconnecting stale=false games=75  DET ML=-300
+2b socket still down (> fallback window)             state=polling      stale=false games=75  DET ML=-300
+3  snapshot API returns HTML                         state=degraded     stale=false games=75  DET ML=-300  lastError=DraftKings returned non-JSON
+4a snapshot API returns HTTP 500                     state=degraded     stale=true  games=75  DET ML=-300  lastError=DraftKings HTTP 500
+4b ... 8 s with no contact at all                    state=degraded     stale=true  games=75  DET ML=-300
+5  snapshot API back, DET ML now -350                state=polling      stale=false games=75  DET ML=-350
+6  socket back (reconnect backoff is capped at 15 s) state=live         stale=false games=75  DET ML=-350
+```
+
+The table never blanks, the last known price survives every failure, the state is always named, and recovery is automatic.
 
 Nothing in CI touches DraftKings. `npm run probe` is the opt-in live contract check.
 

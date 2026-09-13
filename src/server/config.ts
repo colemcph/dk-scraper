@@ -10,6 +10,10 @@ export interface AppConfig {
     leagueName: string;
     /** "Game" subcategory under "Game Lines" (main markets). NFL = 4518. */
     subcategoryId: string;
+    /** Override the snapshot API origin (chaos tests, proxies). Default: sportsbook-nash.draftkings.com */
+    restBaseUrl?: string;
+    /** Override the full socket URL (chaos tests). Default: wss://sportsbook-ws-{region}.draftkings.com/websocket?... */
+    wsUrl?: string;
   };
   feed: {
     resyncIntervalMs: number;
@@ -50,6 +54,8 @@ export function loadConfig(): AppConfig {
       leagueId: str('DK_LEAGUE_ID', '88808'),
       leagueName: str('DK_LEAGUE_NAME', 'NFL'),
       subcategoryId: str('DK_SUBCATEGORY_ID', '4518'),
+      ...(process.env.DK_REST_BASE_URL ? { restBaseUrl: process.env.DK_REST_BASE_URL } : {}),
+      ...(process.env.DK_WS_URL ? { wsUrl: process.env.DK_WS_URL } : {}),
     },
     feed: {
       resyncIntervalMs: int('RESYNC_INTERVAL_MS', 60_000),

@@ -10,9 +10,9 @@ const FORMAT_KEY = 'odds-format';
 
 function loadFormat(): OddsFormat {
   try {
-    return localStorage.getItem(FORMAT_KEY) === 'decimal' ? 'decimal' : 'american';
+    return localStorage.getItem(FORMAT_KEY) === 'american' ? 'american' : 'decimal';
   } catch {
-    return 'american';
+    return 'decimal';
   }
 }
 

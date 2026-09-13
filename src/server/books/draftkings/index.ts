@@ -17,6 +17,7 @@ export interface DraftKingsAdapterOptions {
   logger: Logger;
   rest?: Partial<DkRestOptions>;
   socketFactory?: SocketFactory;
+  wsUrl?: string;
 }
 
 /** Well-known DraftKings league ids + their "Game" (main lines) subcategory. */
@@ -64,6 +65,7 @@ export class DraftKingsAdapter implements BookAdapter {
       handlers,
       logger: this.logger.child('ws'),
       ...(this.opts.socketFactory ? { socketFactory: this.opts.socketFactory } : {}),
+      ...(this.opts.wsUrl ? { urlOverride: this.opts.wsUrl } : {}),
     });
     client.start();
     return client;

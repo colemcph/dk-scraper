@@ -47,6 +47,8 @@ export interface DkSocketOptions {
   connectTimeoutMs?: number;
   socketFactory?: SocketFactory;
   now?: () => number;
+  /** Full URL override (tests / chaos runs against a mock DraftKings). */
+  urlOverride?: string;
 }
 
 /** Close codes DraftKings' own client treats specially (from dk-data-layer). */
@@ -71,6 +73,7 @@ export class DkSocketClient implements Subscription {
   }
 
   get url(): string {
+    if (this.opts.urlOverride) return this.opts.urlOverride;
     const locale = this.opts.locale ?? 'en-US';
     return `wss://sportsbook-ws-${this.opts.region}.draftkings.com/websocket?format=json&locale=${encodeURIComponent(locale)}`;
   }
@@ -261,7 +264,7 @@ export class DkSocketClient implements Subscription {
   private scheduleReconnect(code?: number): void {
     if (this.stopped || this.reconnectTimer) return;
     const base = this.opts.retryBaseMs ?? 1_000;
-    const max = this.opts.retryMaxMs ?? 30_000;
+    const max = this.opts.retryMaxMs ?? 15_000;
     const exp = Math.min(max, base * 2 ** Math.min(this.attempt, 10));
     const delay = code === TERMINAL_CLOSE ? max : Math.round(exp * (0.7 + Math.random() * 0.6));
     this.attempt++;

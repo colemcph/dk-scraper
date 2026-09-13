@@ -267,6 +267,15 @@ describe('OddsStore.applyDelta', () => {
     expect(store.getGame('g2')).toBeDefined();
   });
 
+  it('hides games that kicked off hours ago even if the status string was unrecognised', () => {
+    const store = new OddsStore('88808');
+    const old = game('old', { startTime: '2026-09-13T17:00:00.000Z', status: 'upcoming' });
+    const fresh = game('fresh', { startTime: '2026-09-14T00:20:00.000Z', status: 'upcoming' });
+    store.applySnapshot([old, fresh], T0);
+    const now = Date.parse('2026-09-14T00:00:00.000Z'); // 7 h after "old" kicked off
+    expect(store.list(now).map((g) => g.id)).toEqual(['fresh']);
+  });
+
   it('hides finished games from list() until the next snapshot drops them', () => {
     const store = seeded();
     const delta = emptyDelta(T1);

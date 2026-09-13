@@ -376,7 +376,9 @@ export class FeedManager {
       this.log.warn('socket unavailable; falling back to polling', {
         pollIntervalMs: this.opts.config.pollIntervalMs,
       });
-      this.setState('polling');
+      // DEGRADED means the snapshot API is failing too; polling keeps retrying but the state
+      // must not be promoted until a snapshot actually succeeds.
+      if (this.state !== 'degraded') this.setState('polling');
       this.startPolling();
     }, this.opts.config.wsFallbackAfterMs);
   }

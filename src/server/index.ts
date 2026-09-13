@@ -23,6 +23,8 @@ const adapter = new DraftKingsAdapter({
   site: config.dk.site,
   wsRegion: config.dk.wsRegion,
   logger,
+  ...(config.dk.restBaseUrl ? { rest: { baseUrl: config.dk.restBaseUrl } } : {}),
+  ...(config.dk.wsUrl ? { wsUrl: config.dk.wsUrl } : {}),
 });
 const store = new OddsStore(league.id);
 const feed = new FeedManager({ adapter, league, store, logger, config: config.feed });
