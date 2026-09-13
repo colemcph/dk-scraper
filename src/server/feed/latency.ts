@@ -3,26 +3,59 @@ import type { LatencyStats, UpdateLatency } from '../../shared/types.js';
 /**
  * "How old is the number on the screen?" needs three clocks to agree: DraftKings', ours and the
  * browser's. DraftKings stamps every delta with `createdTime` (odds engine) and
- * `websocketPublishTimestamp` (socket layer). We estimate our offset from DraftKings NTP-style
- * from the subscribe round trip (their ack carries their time; RTT/2 is the uncertainty), then
- * report `createdTime -> our receipt` corrected by that offset. The browser does the same trick
- * against `/api/time`.
+ * `websocketPublishTimestamp` (socket layer). We estimate our offset from DraftKings two ways:
+ *
+ *  1. Anchor: NTP-style from the subscribe round trip — their ack carries their time and we
+ *     assume it corresponds to our send time + RTT/2.
+ *  2. Tracked: every frame gives `d = ourReceipt − theirPublish = −skew + oneWay + queueing`.
+ *     Over a window, min(d) ≈ −skew + oneWayMin, and oneWayMin ≈ RTT/2, so
+ *     skew ≈ RTT/2 − min(d). This keeps working if the host clock steps mid-session (which
+ *     happened on the dev laptop) and is what the UI reports once enough frames have arrived.
+ *
+ * The self-check: after correction, the network leg (publish → receipt) must be small and never
+ * negative. The count of negative samples is exposed so the page can prove its own numbers.
  */
 export class LatencyTracker {
-  private samples: number[] = [];
-  private skewMs: number | null = null;
-  private skewRttMs: number | null = null;
+  private totals: number[] = [];
+  private pipelines: number[] = [];
+  private transports: number[] = [];
+  /** raw (receipt − publish) samples with our-clock timestamps, for the tracked skew */
+  private window: { d: number; at: number }[] = [];
+  private ackSkewMs: number | null = null;
+  private ackRttMs: number | null = null;
+  private negativeTransport = 0;
   private last: number | null = null;
 
-  constructor(private readonly maxSamples = 1000) {}
+  constructor(
+    private readonly maxSamples = 1000,
+    private readonly trackWindowMs = 10 * 60_000,
+    private readonly minTrackSamples = 10,
+  ) {}
 
-  /** Called on every subscribe ack. Keeps the estimate from the tightest round trip we've seen recently. */
+  /** Called on every subscribe ack. Keeps the tightest round trip seen as the anchor. */
   recordSkew(skewMs: number, rttMs: number): void {
-    // A large RTT makes the estimate mushy; prefer the tighter of the last two.
-    if (this.skewRttMs === null || rttMs <= this.skewRttMs * 1.5) {
-      this.skewMs = Math.round(skewMs);
-      this.skewRttMs = Math.round(rttMs);
+    if (this.ackRttMs === null || rttMs <= this.ackRttMs * 1.5) {
+      this.ackSkewMs = Math.round(skewMs);
+      this.ackRttMs = Math.round(rttMs);
     }
+    if (this.ackRttMs !== null) this.ackRttMs = Math.min(this.ackRttMs, Math.round(rttMs));
+  }
+
+  /** Current best estimate of (DraftKings clock − our clock). */
+  get skewMs(): number | null {
+    return this.trackedSkew() ?? this.ackSkewMs;
+  }
+
+  get skewSource(): 'tracked' | 'ack' | null {
+    if (this.trackedSkew() !== null) return 'tracked';
+    return this.ackSkewMs === null ? null : 'ack';
+  }
+
+  private trackedSkew(): number | null {
+    if (this.ackRttMs === null || this.window.length < this.minTrackSamples) return null;
+    let minD = Infinity;
+    for (const s of this.window) if (s.d < minD) minD = s.d;
+    return Math.round(this.ackRttMs / 2 - minD);
   }
 
   /** Builds the latency record for one delta and folds it into the stats. */
@@ -33,12 +66,21 @@ export class LatencyTracker {
     if (![created, published, received].every(Number.isFinite)) return undefined;
 
     const skew = this.skewMs ?? 0;
-    const dkToServerMs = Math.max(0, Math.round(received - (created - skew)));
     const dkPipelineMs = Math.max(0, Math.round(published - created));
+    const transportMs = Math.round(received - (published - skew));
+    const dkToServerMs = Math.max(0, Math.round(received - (created - skew)));
 
-    this.samples.push(dkToServerMs);
-    if (this.samples.length > this.maxSamples) this.samples.shift();
+    if (transportMs < 0) this.negativeTransport++;
+    this.push(this.totals, dkToServerMs);
+    this.push(this.pipelines, dkPipelineMs);
+    this.push(this.transports, transportMs);
     this.last = dkToServerMs;
+
+    this.window.push({ d: received - published, at: received });
+    const cutoff = received - this.trackWindowMs;
+    while (this.window.length > 0 && (this.window[0]!.at < cutoff || this.window.length > 500)) {
+      this.window.shift();
+    }
 
     return {
       dkCreatedAt: createdAt,
@@ -51,30 +93,36 @@ export class LatencyTracker {
   }
 
   stats(): LatencyStats {
-    if (this.samples.length === 0) {
-      return {
-        samples: 0,
-        p50Ms: null,
-        p95Ms: null,
-        lastMs: null,
-        clockSkewMs: this.skewMs,
-        skewRttMs: this.skewRttMs,
-      };
-    }
-    const sorted = [...this.samples].sort((a, b) => a - b);
+    const sorted = [...this.totals].sort((a, b) => a - b);
+    const pipelines = [...this.pipelines].sort((a, b) => a - b);
+    const transports = [...this.transports].sort((a, b) => a - b);
     return {
       samples: sorted.length,
-      p50Ms: percentile(sorted, 0.5),
-      p95Ms: percentile(sorted, 0.95),
+      p50Ms: sorted.length ? percentile(sorted, 0.5) : null,
+      p95Ms: sorted.length ? percentile(sorted, 0.95) : null,
       lastMs: this.last,
+      pipelineP50Ms: pipelines.length ? percentile(pipelines, 0.5) : null,
+      transportP50Ms: transports.length ? percentile(transports, 0.5) : null,
+      transportMinMs: transports.length ? (transports[0] ?? null) : null,
+      negativeTransportSamples: this.negativeTransport,
       clockSkewMs: this.skewMs,
-      skewRttMs: this.skewRttMs,
+      skewSource: this.skewSource,
+      skewRttMs: this.ackRttMs,
     };
   }
 
   reset(): void {
-    this.samples = [];
+    this.totals = [];
+    this.pipelines = [];
+    this.transports = [];
+    this.window = [];
+    this.negativeTransport = 0;
     this.last = null;
+  }
+
+  private push(arr: number[], v: number): void {
+    arr.push(v);
+    if (arr.length > this.maxSamples) arr.shift();
   }
 }
 

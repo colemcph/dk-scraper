@@ -34,6 +34,24 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
           </dd>
         </div>
         <div>
+          <dt title="createdTime → websocketPublishTimestamp on DraftKings' own clocks (no skew involved), then socket publish → our receipt after skew correction">
+            Breakdown
+          </dt>
+          <dd className="small">
+            {lat && lat.samples > 0 ? (
+              <>
+                inside DraftKings p50 <strong>{formatMs(lat.pipelineP50Ms)}</strong> · network p50{' '}
+                <strong>{formatMs(lat.transportP50Ms)}</strong> (min {formatMs(lat.transportMinMs)}) ·{' '}
+                <span className={lat.negativeTransportSamples > 0 ? 'warn-text' : ''}>
+                  self-check: {lat.negativeTransportSamples} negative of {lat.samples}
+                </span>
+              </>
+            ) : (
+              <span className="muted">—</span>
+            )}
+          </dd>
+        </div>
+        <div>
           <dt title="SSE emit time on the server → receipt in this tab, corrected for this browser's clock offset">
             Server → this browser
           </dt>
@@ -48,14 +66,17 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
           </dd>
         </div>
         <div>
-          <dt title="Estimated NTP-style: DraftKings' timestamp on the subscribe ack vs. our send time + RTT/2">
+          <dt title="From the subscribe round trip (ack carries DraftKings' time), then refined continuously from every frame's publish timestamp; uncertainty ≈ RTT/2">
             Server ↔ DraftKings clock skew
           </dt>
           <dd>
             {lat?.clockSkewMs != null ? (
               <>
                 {lat.clockSkewMs >= 0 ? '+' : ''}
-                {lat.clockSkewMs} ms <span className="muted">(RTT {lat.skewRttMs} ms)</span>
+                {lat.clockSkewMs} ms{' '}
+                <span className="muted">
+                  ({lat.skewSource === 'tracked' ? 'tracked from frames' : 'from subscribe ack'}, RTT {lat.skewRttMs} ms)
+                </span>
               </>
             ) : (
               '—'
@@ -95,7 +116,7 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
         </div>
         {c && (
           <div>
-            <dt title="socket updates / snapshots / socket reconnects / drift corrections (changes a periodic snapshot found that the socket had not delivered — should stay 0)">
+            <dt title="socket updates / snapshots / socket reconnects / drift corrections (changes a periodic snapshot found that the socket had not delivered — should stay 0) / stale-skips (snapshot fields ignored because the socket was newer)">
               Counters
             </dt>
             <dd className="small">
@@ -104,7 +125,7 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
               <span className={c.driftCorrections > 0 ? 'warn-text' : ''}>
                 {c.driftCorrections} drift
               </span>{' '}
-              · {c.invalidEntities} invalid
+              · {c.staleSnapshotSkips} stale-skips · {c.invalidEntities} invalid
             </dd>
           </div>
         )}

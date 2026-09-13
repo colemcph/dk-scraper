@@ -61,8 +61,10 @@ export function StatusStrip(props: Props) {
   const contactAgo = serverAgoMs(meta?.lastContactAt, offset, browserNow);
   const changeAgo = serverAgoMs(meta?.lastChangeAt, offset, browserNow);
   const lat = meta?.latency;
-  const endToEndP50 =
-    lat?.p50Ms != null && props.browserLegP50 != null
+  const live = meta?.feedState === 'live';
+  const endToEndP50 = !live
+    ? null
+    : lat?.p50Ms != null && props.browserLegP50 != null
       ? lat.p50Ms + props.browserLegP50
       : (lat?.p50Ms ?? null);
 
@@ -90,8 +92,8 @@ export function StatusStrip(props: Props) {
           className="status-item"
           title="DraftKings odds engine → your screen. p50 over recent updates, clock-skew corrected. Details in the latency panel."
         >
-          DK → screen <strong>{formatMs(endToEndP50)}</strong>
-          {lat?.p95Ms != null && (
+          DK → screen <strong>{live ? formatMs(endToEndP50) : 'n/a (polling)'}</strong>
+          {live && lat?.p95Ms != null && (
             <span className="muted"> · p95 {formatMs(lat.p95Ms + (props.browserLegP50 ?? 0))}</span>
           )}
         </span>

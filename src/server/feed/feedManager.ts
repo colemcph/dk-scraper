@@ -82,8 +82,11 @@ export class FeedManager {
     restFailures: 0,
     unresolvedDeltas: 0,
     driftCorrections: 0,
+    staleSnapshotSkips: 0,
     invalidEntities: 0,
   };
+  private unresolvedDelayMs = 0;
+  private lastUnresolvedAt = 0;
 
   private stopped = false;
   private bootstrapAttempt = 0;
@@ -260,6 +263,7 @@ export class FeedManager {
     this.lastSnapshotAt = now;
 
     const cs = this.opts.store.applySnapshot(res.games, res.fetchedAt);
+    this.counters.staleSnapshotSkips += cs.skippedStale;
     this.log.info('snapshot applied', {
       reason,
       games: res.games.length,
@@ -267,6 +271,7 @@ export class FeedManager {
       changes: cs.changes.length,
       touched: cs.touchedGameIds.length,
       removed: cs.removedGameIds.length,
+      skippedStale: cs.skippedStale,
     });
     if (
       cs.changes.length > 0 &&
@@ -348,12 +353,18 @@ export class FeedManager {
     if (result.changed) this.emitDelta(result);
   }
 
+  /** Debounced, with exponential backoff so a stream of foreign ids can't turn into a poll loop. */
   private scheduleUnresolvedResync(): void {
     if (this.timers.unresolved) return;
+    const base = this.opts.config.unresolvedResyncDelayMs ?? 5_000;
+    const now = this.now();
+    if (now - this.lastUnresolvedAt > 2 * 60_000) this.unresolvedDelayMs = 0;
+    this.unresolvedDelayMs = this.unresolvedDelayMs === 0 ? base : Math.min(60_000, this.unresolvedDelayMs * 2);
+    this.lastUnresolvedAt = now;
     this.timers.unresolved = setTimeout(() => {
       this.timers.unresolved = undefined;
       void this.resync('unresolved');
-    }, this.opts.config.unresolvedResyncDelayMs ?? 5_000);
+    }, this.unresolvedDelayMs);
   }
 
   private armFallback(): void {

@@ -31,7 +31,7 @@ const hub = new SseHub({ feed, logger, heartbeatIntervalMs: config.sse.heartbeat
 // dist/server/index.js -> dist/web ; src/server/index.ts (tsx dev) -> no static, Vite serves the UI.
 const here = dirname(fileURLToPath(import.meta.url));
 const staticCandidate = resolve(here, '../web');
-const staticRoot = existsSync(resolve(staticCandidate, 'index.html'))
+const staticRoot = existsSync(resolve(staticCandidate, 'assets'))
   ? relativeToCwd(staticCandidate)
   : undefined;
 

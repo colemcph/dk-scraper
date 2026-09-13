@@ -65,3 +65,11 @@ Short, dated records of the choices that shaped this project and the evidence be
 **Decision:** `Market.suspended` mirrors DraftKings' `isSuspended`; missing sides are just missing.
 
 **Why:** captured frames showed `{id, isSuspended: true}` changes with prices still present. Conflating the two would either hide prices needlessly or miss real suspensions. The UI dims suspended prices and tags them `SUSP`.
+
+## 2026-09-13 — Socket writes beat older snapshots; skew is tracked continuously
+
+**Problem found in review:** a periodic resync is fetched at T and applied ~200 ms later; a socket delta in that window was being overwritten by the older snapshot (bogus flash, stale value until the next move). Separately, the clock-skew estimate was taken once per subscribe; the dev laptop's clock stepped 2 s between two runs, which would have corrupted displayed latency until the next reconnect.
+
+**Decision:** the store records when the socket last wrote each position and refuses older snapshot values for it (counted as `staleSnapshotSkips`). The latency tracker keeps the subscribe-ack estimate as an anchor and refines skew from every frame's publish timestamp over a 10-minute window, exposing a self-check (negative network-leg samples) on the page.
+
+**Also:** unresolved-id resyncs back off exponentially to 60 s so a stream of foreign ids can never become a poll loop, and the dev API no longer serves the raw `src/web` on :3000.

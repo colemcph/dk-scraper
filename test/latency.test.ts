@@ -20,7 +20,11 @@ describe('LatencyTracker', () => {
       p50Ms: 250,
       p95Ms: 250,
       lastMs: 250,
+      pipelineP50Ms: 62,
+      transportP50Ms: 188,
+      negativeTransportSamples: 0,
       clockSkewMs: 1850,
+      skewSource: 'ack',
       skewRttMs: 40,
     });
   });
@@ -34,6 +38,37 @@ describe('LatencyTracker', () => {
     )!;
     expect(s.dkToServerMs).toBe(0);
     expect(s.skewCorrected).toBe(false);
+  });
+
+  it('refines the skew continuously from frame timestamps and survives a clock step', () => {
+    const t = new LatencyTracker(1000, 10 * 60_000, 5);
+    t.recordSkew(2000, 40); // anchor from the ack: DK is 2.0 s ahead
+    const dk = Date.parse('2026-09-13T01:00:00.000Z');
+    // Frames arrive with a true one-way delay of 20 ms, and the *real* skew is 2,000 ms.
+    for (let i = 0; i < 6; i++) {
+      const published = dk + i * 1000;
+      const received = published - 2000 + 20; // our clock
+      t.record(new Date(published - 30).toISOString(), new Date(published).toISOString(), new Date(received).toISOString());
+    }
+    expect(t.stats().skewSource).toBe('tracked');
+    expect(t.stats().clockSkewMs).toBe(2000);
+    expect(t.stats().negativeTransportSamples).toBe(0);
+
+    // Our clock steps forward by 500 ms mid-session (skew is now 1,500 ms). The anchor would
+    // over-correct and produce negative transport; the tracked estimate follows the frames.
+    for (let i = 6; i < 20; i++) {
+      const published = dk + i * 1000;
+      const received = published - 1500 + 20;
+      t.record(new Date(published - 30).toISOString(), new Date(published).toISOString(), new Date(received).toISOString());
+    }
+    expect(t.stats().clockSkewMs).toBe(2000); // min(d) still remembers the pre-step frames...
+    // ...until they age out of the window: replay the post-step frames with later timestamps.
+    for (let i = 0; i < 12; i++) {
+      const published = dk + 11 * 60_000 + i * 1000;
+      const received = published - 1500 + 20;
+      t.record(new Date(published - 30).toISOString(), new Date(published).toISOString(), new Date(received).toISOString());
+    }
+    expect(t.stats().clockSkewMs).toBe(1500);
   });
 
   it('keeps the tighter of recent skew samples', () => {

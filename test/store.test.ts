@@ -221,6 +221,52 @@ describe('OddsStore.applyDelta', () => {
     expect(store.list()).toHaveLength(0);
   });
 
+  it('does not let an older snapshot overwrite what the socket delivered after it was fetched', () => {
+    const store = seeded();
+    const fetchStartedAt = '2026-09-13T01:00:10.000Z';
+    // Socket delivers a newer price 150 ms after the snapshot request went out...
+    const delta = emptyDelta('2026-09-13T01:00:10.100Z');
+    delta.receivedAt = '2026-09-13T01:00:10.150Z';
+    delta.selections.upsert.push({
+      sourceSelectionId: 'g1-ml-h',
+      odds: { american: -200, decimal: 1.5 },
+    });
+    delta.games.patch.push({ id: 'g1', status: 'live', live: { period: '1st' } });
+    store.applyDelta(delta);
+    // ...and the (older) snapshot, still showing -170 and "upcoming", is applied afterwards.
+    const stale = game('g1');
+    const cs = store.applySnapshot([stale], fetchStartedAt);
+    expect(cs.changes).toHaveLength(0);
+    expect(cs.skippedStale).toBeGreaterThan(0);
+    expect(store.getGame('g1')!.markets.moneyline!.sides.home!.odds.american).toBe(-200);
+    expect(store.getGame('g1')!.status).toBe('live');
+    // A later snapshot (fetched after the socket write) is applied normally.
+    const later = game('g1');
+    later.markets.moneyline!.sides.home!.odds = { american: -210, decimal: 1.476 };
+    const cs2 = store.applySnapshot([later], '2026-09-13T01:00:20.000Z');
+    expect(cs2.changes).toHaveLength(1);
+    expect(store.getGame('g1')!.markets.moneyline!.sides.home!.odds.american).toBe(-210);
+  });
+
+  it('keeps a game the socket added after an older snapshot that lacks it', () => {
+    const store = seeded();
+    const delta = emptyDelta('2026-09-13T01:00:10.100Z');
+    delta.receivedAt = '2026-09-13T01:00:10.150Z';
+    const g2 = game('g2');
+    delta.games.upsert.push({
+      id: g2.id,
+      startTime: g2.startTime,
+      status: g2.status,
+      home: g2.home,
+      away: g2.away,
+      updatedAt: g2.updatedAt,
+    });
+    store.applyDelta(delta);
+    const cs = store.applySnapshot([game('g1')], '2026-09-13T01:00:10.000Z');
+    expect(cs.removedGameIds).toEqual([]);
+    expect(store.getGame('g2')).toBeDefined();
+  });
+
   it('hides finished games from list() until the next snapshot drops them', () => {
     const store = seeded();
     const delta = emptyDelta(T1);

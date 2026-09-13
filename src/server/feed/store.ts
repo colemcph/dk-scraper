@@ -30,12 +30,17 @@ export interface ChangeSet {
   removedGameIds: string[];
   /** Anything at all changed (touched or removed)? */
   changed: boolean;
+  /** Snapshot fields ignored because the socket had delivered something newer meanwhile. */
+  skippedStale: number;
 }
 
 export interface DeltaResult extends ChangeSet {
   /** Upstream ids we could not place — the caller should resync from a snapshot. */
   unresolved: string[];
 }
+
+/** How long we remember that the socket touched a position, for snapshot/delta ordering. */
+const SEEN_TTL_MS = 10 * 60_000;
 
 function sameSide(a: Side, b: Side): boolean {
   return (
@@ -81,6 +86,11 @@ function makeChange(
   };
 }
 
+const gameKey = (gameId: string) => `game:${gameId}`;
+const marketKey = (gameId: string, market: MarketType) => `mkt:${gameId}:${market}`;
+const sideKey = (gameId: string, market: MarketType, side: SideKey) =>
+  `sel:${gameId}:${market}:${side}`;
+
 /**
  * Authoritative in-memory state for one book + league.
  *
@@ -90,11 +100,19 @@ function makeChange(
  *  - `applyDelta` applies a push-feed delta. DraftKings' deltas reference selections by id
  *    only (no market id on a change) and re-key a selection when its line moves
  *    (`replacedSelectionId`), so the store keeps id → position indices.
+ *
+ * Ordering: a snapshot is fetched at T and applied a little later. Any position the socket
+ * touched after T is newer than the snapshot, so the snapshot must not overwrite it — the
+ * store records when the socket last touched each game/market/side (our clock) and
+ * `applySnapshot` skips those. Without this, a resync during a busy live game would flash a
+ * bogus "change" back to an older price and leave it there until the selection moved again.
  */
 export class OddsStore {
   private games = new Map<string, Game>();
   private selectionIndex = new Map<string, SelectionRef>();
   private marketIndex = new Map<string, MarketRef>();
+  /** position key → ms (our clock) when the socket last wrote it */
+  private socketSeenAt = new Map<string, number>();
   private versionCounter = 0;
 
   constructor(private readonly leagueId: string) {}
@@ -122,10 +140,18 @@ export class OddsStore {
       );
   }
 
+  /**
+   * @param at ISO time the snapshot request was *started* (our clock); socket writes after it win.
+   */
   applySnapshot(incoming: Game[], at: string): ChangeSet {
+    const fetchedAt = Date.parse(at);
+    const newerOnSocket = (key: string) => (this.socketSeenAt.get(key) ?? 0) > fetchedAt;
+    this.pruneSeen(fetchedAt);
+
     const changes: OddsChange[] = [];
     const touched = new Set<string>();
     const next = new Map<string, Game>();
+    let skippedStale = 0;
 
     for (const ng of incoming) {
       const old = this.games.get(ng.id);
@@ -135,31 +161,66 @@ export class OddsStore {
         continue;
       }
 
-      let gameTouched =
-        old.status !== ng.status ||
-        old.startTime !== ng.startTime ||
-        !sameLive(old.live, ng.live) ||
-        !sameTeam(old.home, ng.home) ||
-        !sameTeam(old.away, ng.away);
-
       const merged: Game = { ...ng, markets: { moneyline: null, spread: null, total: null } };
+      let gameTouched: boolean;
+      if (newerOnSocket(gameKey(ng.id))) {
+        // Socket patched status/score/kickoff after this snapshot was taken: keep ours.
+        skippedStale++;
+        merged.status = old.status;
+        merged.startTime = old.startTime;
+        merged.home = old.home;
+        merged.away = old.away;
+        if (old.live) merged.live = old.live;
+        else delete merged.live;
+        gameTouched = false;
+      } else {
+        gameTouched =
+          old.status !== ng.status ||
+          old.startTime !== ng.startTime ||
+          !sameLive(old.live, ng.live) ||
+          !sameTeam(old.home, ng.home) ||
+          !sameTeam(old.away, ng.away);
+      }
+
       for (const type of MARKET_TYPES) {
         const nm = ng.markets[type];
         const om = old.markets[type];
+        const marketNewer = newerOnSocket(marketKey(ng.id, type));
         if (!nm) {
-          if (om) gameTouched = true;
+          if (om && marketNewer) {
+            merged.markets[type] = om; // socket (re)created it after the snapshot; keep
+            skippedStale++;
+          } else if (om) gameTouched = true;
           continue;
         }
         if (!om) {
+          if (marketNewer) {
+            skippedStale++; // socket removed it after the snapshot; keep it gone
+            continue;
+          }
           merged.markets[type] = nm;
           gameTouched = true;
           continue;
         }
-        let marketTouched = om.suspended !== nm.suspended;
+
+        let marketTouched = false;
         const mm: Market = { ...nm, sides: {}, updatedAt: om.updatedAt };
+        if (marketNewer) {
+          mm.suspended = om.suspended;
+          mm.sourceMarketId = om.sourceMarketId;
+          skippedStale++;
+        } else if (om.suspended !== nm.suspended) {
+          marketTouched = true;
+        }
+
         for (const key of SIDE_KEYS) {
           const ns = nm.sides[key];
           const os = om.sides[key];
+          if (newerOnSocket(sideKey(ng.id, type, key))) {
+            if (os) mm.sides[key] = os; // socket wrote this side after the snapshot; keep ours
+            skippedStale++;
+            continue;
+          }
           if (!ns) {
             if (os) marketTouched = true;
             continue;
@@ -202,17 +263,33 @@ export class OddsStore {
       next.set(ng.id, merged);
     }
 
-    const removed = [...this.games.keys()].filter((id) => !next.has(id));
+    const removed: string[] = [];
+    for (const [id, old] of this.games) {
+      if (next.has(id)) continue;
+      if (newerOnSocket(gameKey(id))) {
+        next.set(id, old); // added/updated by the socket after the snapshot was taken
+        skippedStale++;
+      } else removed.push(id);
+    }
     this.games = next;
     this.rebuildIndexes();
 
     const changed = touched.size > 0 || removed.length > 0;
     if (changed) this.versionCounter++;
-    return { at, changes, touchedGameIds: [...touched], removedGameIds: removed, changed };
+    return {
+      at,
+      changes,
+      touchedGameIds: [...touched],
+      removedGameIds: removed,
+      changed,
+      skippedStale,
+    };
   }
 
   applyDelta(delta: NormalizedDelta, latency?: UpdateLatency): DeltaResult {
     const at = delta.createdAt;
+    const seenAt = Date.parse(delta.receivedAt) || Date.now();
+    const seen = (key: string) => this.socketSeenAt.set(key, seenAt);
     const changes: OddsChange[] = [];
     const touched = new Set<string>();
     const removed: string[] = [];
@@ -228,18 +305,21 @@ export class OddsStore {
         market.updatedAt = at;
       }
       this.selectionIndex.delete(id);
+      seen(sideKey(ref.gameId, ref.market, ref.side));
       touched.add(ref.gameId);
     }
     for (const id of delta.markets.remove) {
       const ref = this.marketIndex.get(id);
       if (!ref) continue;
       this.dropMarket(ref.gameId, ref.market);
+      seen(marketKey(ref.gameId, ref.market));
       touched.add(ref.gameId);
     }
     for (const id of delta.games.remove) {
       if (!this.games.has(id)) continue;
       for (const type of MARKET_TYPES) this.dropMarket(id, type);
       this.games.delete(id);
+      seen(gameKey(id));
       removed.push(id);
       touched.delete(id);
     }
@@ -247,6 +327,7 @@ export class OddsStore {
     // 2. New games (markets arrive separately).
     for (const up of delta.games.upsert) {
       const existing = this.games.get(up.id);
+      seen(gameKey(up.id));
       if (existing) {
         if (this.patchGame(existing, up, at)) touched.add(up.id);
         continue;
@@ -268,6 +349,7 @@ export class OddsStore {
         unresolved.push(`event:${patch.id}`);
         continue;
       }
+      seen(gameKey(patch.id));
       if (this.patchGame(game, patch, at)) touched.add(patch.id);
     }
 
@@ -278,6 +360,7 @@ export class OddsStore {
         unresolved.push(`market:${m.sourceMarketId}`);
         continue;
       }
+      seen(marketKey(game.id, m.type));
       const current = game.markets[m.type];
       if (current?.sourceMarketId === m.sourceMarketId) {
         if (m.suspended !== undefined && current.suspended !== m.suspended) {
@@ -302,6 +385,7 @@ export class OddsStore {
       const ref = this.marketIndex.get(p.sourceMarketId);
       const market = ref ? this.games.get(ref.gameId)?.markets[ref.market] : undefined;
       if (!ref || !market) continue; // a market we don't track (not an error)
+      seen(marketKey(ref.gameId, ref.market));
       if (p.suspended !== undefined && market.suspended !== p.suspended) {
         market.suspended = p.suspended;
         market.updatedAt = at;
@@ -326,6 +410,7 @@ export class OddsStore {
         unresolved.push(`selection:${s.sourceSelectionId}`);
         continue;
       }
+      seen(sideKey(ref.gameId, ref.market, ref.side));
 
       const existing = market.sides[ref.side];
       const line = s.line !== undefined ? s.line : existing?.line;
@@ -376,6 +461,7 @@ export class OddsStore {
       touchedGameIds: [...touched],
       removedGameIds: removed,
       changed,
+      skippedStale: 0,
       unresolved,
     };
   }
@@ -426,6 +512,12 @@ export class OddsStore {
       this.selectionIndex.delete(side.sourceSelectionId);
     this.marketIndex.delete(market.sourceMarketId);
     game.markets[type] = null;
+  }
+
+  private pruneSeen(now: number): void {
+    for (const [key, t] of this.socketSeenAt) {
+      if (now - t > SEEN_TTL_MS) this.socketSeenAt.delete(key);
+    }
   }
 
   private rebuildIndexes(): void {

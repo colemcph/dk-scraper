@@ -161,19 +161,25 @@ A free-tier box can hold one socket to DraftKings and fan out to any number of t
 Three clocks are involved (DraftKings', the server's, the browser's), so "how old is this number" is computed, not guessed:
 
 - **DraftKings stamps every delta** with `metadata.createdTime` (odds engine) and `websocketPublishTimestamp` (socket layer). Their internal pipeline is ~60 ms.
-- **Server ↔ DraftKings skew** is estimated NTP-style from the subscribe round trip: their ack carries their time; RTT/2 (≈20 ms) is the uncertainty. This mattered — my laptop's clock was **1.85 s behind** DraftKings', which would have made every latency figure negative.
+- **Server ↔ DraftKings skew** is estimated NTP-style from the subscribe round trip (their ack carries their time; RTT/2 ≈ 20 ms is the uncertainty) and then **refined continuously** from every frame: `receipt − publish` over a 10-minute window has a floor of `−skew + one-way`, so the estimate follows the frames even if the host clock steps mid-session (which the dev laptop did — it was 1.85 s behind DraftKings' clock at one point and re-synced later).
+- **Self-check, shown on the page:** after correction, the pure network leg (DraftKings socket publish → our receipt) must be small and never negative. If the skew were wrong it would go negative or balloon. Tonight: **min 12 / p50 15 / p95 42 ms, 0 negative of 25**, against a measured RTT/2 of 19 ms.
 - **Browser ↔ server skew** is estimated the same way from `/api/time`.
 - Reported per update: `dkToServerMs = receive − (createdTime − skew)` and `serverToBrowserMs = (browserReceive − browserOffset) − emittedAt`. p50/p95 over the last 1,000 updates are in the status strip; each entry in "Recent moves" shows its own breakdown.
 
-**Measured** (Friday night, Ottawa residential connection → DraftKings Ontario, in-play MLB used because NFL lines don't move on a Friday):
+**Measured** (Ottawa residential connection → DraftKings Ontario; in-play MLB because NFL lines don't move on a Friday night). DraftKings' own timestamps let the number be decomposed:
 
-| Leg                                  | p50        | p95        | n   |
-| ------------------------------------ | ---------- | ---------- | --- |
-| DraftKings odds engine → this server | 224–307 ms | 567 ms     | 99  |
-| Server → browser (same machine)      | 2 ms       | 5 ms       | 58  |
-| **DraftKings → screen**              | **≈0.3 s** | **≈0.6 s** |     |
+| Leg                                                            | min   | p50            | p95     | n   |
+| -------------------------------------------------------------- | ----- | -------------- | ------- | --- |
+| Inside DraftKings: odds engine → their publish stage           | 7 ms  | 8 ms           | 8 ms    | 25  |
+| Inside DraftKings: publish stage → socket send (they batch)    | 12 ms | 30 ms          | ~430 ms | 25  |
+| Network: socket send → this server (skew-corrected)            | 12 ms | 15 ms          | 42 ms   | 25  |
+| **DraftKings engine → this server, quiet feed (1 live game)**  | 42 ms | **51 ms**      | 470 ms  | 25  |
+| **DraftKings engine → this server, busy feed (10 live games)** | —     | **224–307 ms** | 567 ms  | 99  |
+| Server → browser (same machine)                                | —     | 2 ms           | 5 ms    | 58  |
 
-_(Numbers from the deployed Render instance will replace these once the Week 1 Sunday slate has run; the panel on the page always shows the live figures.)_
+So on the push path a move is on screen **~50–300 ms** after DraftKings' engine stamps it; the tail is their batching, which their own website also waits for (and their client additionally throttles DOM updates to 500 ms). Our own processing is under 1 ms per frame.
+
+_(Numbers from the deployed Render instance will replace these once the Week 1 Sunday slate has run; the panel on the page always shows the live figures and the breakdown.)_
 
 Bounds in the other states:
 
@@ -196,6 +202,8 @@ Bounds in the other states:
 **msgpack.** DraftKings' site opens the socket with `format=msgpack`. The same library has a JSON path, and the server honours `format=json`, so no binary decoding was needed. If they ever drop JSON, the app automatically falls back to POLLING and stays correct; adding `@msgpack/msgpack` decoding is a bounded follow-up.
 
 **Small sharp edges.** `displayOdds.american` uses **U+2212** (Unicode minus), not `-`; prices are taken from the numeric `trueOdds` instead. Kickoff times have 7 fractional digits. Event names are `AWAY @ HOME`. The socket server closes idle connections (their client uses a 5 s inactivity code `4002`), so we ping every 15 s and force a reconnect after 45 s of silence.
+
+**Rate limits.** None encountered. A bounded probe (20 requests at 1/s, then 20 at 4/s) returned 40 × HTTP 200 with no `Retry-After`. What it did show is the 1-second edge cache: at 4/s the `Date` header repeated and responses came back in ~19 ms — the same cached copy — while at 1/s every response was a fresh origin hit. That cache, not a quota, is the effective limit on REST freshness, and it is why polling faster than 1/s buys nothing. I deliberately did not push further (sustained 10+/s, parallel sockets): the socket makes it pointless for the product, and Akamai keeps IP reputation.
 
 **Cloud IPs.** Akamai scores datacenter egress differently from residential. `npm run probe` exists precisely to answer "is this host allowed?" in 30 s after deploying; `GET /api/diagnostics` shows the same from the running service.
 
@@ -232,6 +240,7 @@ How the store copes (`src/server/feed/store.ts`):
 3. Only real value changes produce a `ChangeSet` entry and a `prev`; re-applying a frame is a no-op (idempotent), so replay after a reconnect is safe.
 4. Market suspension is DraftKings' `isSuspended` flag, kept separate from "no sides priced"; the UI dims suspended prices and tags them `SUSP`.
 5. Finished games hide immediately and are dropped by the next snapshot.
+6. **Snapshot/delta ordering.** A resync snapshot is requested at T and applied ~200 ms later; anything the socket delivered in between is newer than the snapshot. The store records when the socket last wrote each game/market/side (our clock) and a snapshot older than that write is not allowed to overwrite it — otherwise a resync during a busy live game would flash a bogus "change" back to an older price and leave it there. Skips are counted (`staleSnapshotSkips`) and shown in the panel.
 
 Everything above is exercised in `test/store.test.ts` and `test/normalize.test.ts` against the captured fixtures.
 
@@ -297,11 +306,11 @@ npm run typecheck # server (NodeNext) + web (bundler) projects
 ```
 
 - `test/normalize.test.ts` — the real 75-game NFL payload and the real socket frames: every market/side mapped, U+2212, malformed entities dropped, non-main markets ignored, `replacedSelectionId`/`isSuspended`/remove lists.
-- `test/store.test.ts` — snapshot diffing, `prev` history, delta resolution by id / replaced id / market+side, unresolved reporting, idempotency, suspension, removal.
+- `test/store.test.ts` — snapshot diffing, `prev` history, delta resolution by id / replaced id / market+side, unresolved reporting, idempotency, suspension, removal, and snapshot/delta ordering (an older snapshot cannot overwrite a newer socket write).
 - `test/feedManager.test.ts` — the state machine with a fake adapter and fake timers: bootstrap backoff, socket → polling fallback and recovery with gap-filling resync, latency attribution with skew, unresolved → resync, stale flag, refresh rate limit, drift counting, polling-only adapters.
 - `test/ws.test.ts` — the socket client with a fake socket: subscribe payload, NTP-style skew from the ack, malformed frames, exponential backoff and reset, silence watchdog, clean stop.
 - `test/sse.test.ts` — snapshot on connect, versioned deltas, heartbeats, `Last-Event-ID` replay vs. fresh snapshot, dropping dead clients.
-- `test/latency.test.ts` — skew correction math and percentiles.
+- `test/latency.test.ts` — skew correction math, continuous skew tracking across a clock step, and percentiles.
 
 Nothing in CI touches DraftKings. `npm run probe` is the opt-in live contract check.
 
@@ -341,6 +350,10 @@ A `FeedManager` per adapter, all feeding the same hub. A polling-only book is al
 - Guardrail: AI proposes, tests and humans dispose. Nothing generated ships without the fixture suite passing.
 
 ---
+
+## Known unknowns
+
+Verified on MLB in-play, not yet on an NFL Sunday: the `period` strings DraftKings uses for NFL, whether main-line market ids change at kickoff, the status string for finished games (unknown strings show as upcoming until the next snapshot drops them, ≤ 60 s), and the orientation of `firstTeamScore`/`secondTeamScore` (mapped away/home from DraftKings' listing order). Multi-hour socket sessions and Akamai's treatment of Render's datacenter IP are answered by the first day of deployment; every close code and reconnect is logged and counted.
 
 ## Limits and ethics
 

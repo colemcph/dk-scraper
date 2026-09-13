@@ -94,9 +94,18 @@ export interface LatencyStats {
   p50Ms: number | null;
   p95Ms: number | null;
   lastMs: number | null;
-  /** DraftKings clock minus our clock, estimated NTP-style from the subscribe round trip. */
+  /** createdTime -> websocketPublishTimestamp: DraftKings' own pipeline, their clocks only. */
+  pipelineP50Ms: number | null;
+  /** websocketPublishTimestamp -> our receipt, skew-corrected: the network leg. */
+  transportP50Ms: number | null;
+  transportMinMs: number | null;
+  /** Self-check: transport samples that came out negative (should stay 0 if the skew is right). */
+  negativeTransportSamples: number;
+  /** DraftKings clock minus our clock. */
   clockSkewMs: number | null;
-  /** Round-trip time of the subscribe request used for the skew estimate. */
+  /** 'ack' = from the subscribe round trip; 'tracked' = continuously refined from frames. */
+  skewSource: 'ack' | 'tracked' | null;
+  /** Tightest subscribe round trip seen (bounds the skew uncertainty at RTT/2). */
   skewRttMs: number | null;
 }
 
@@ -109,6 +118,8 @@ export interface FeedCounters {
   unresolvedDeltas: number;
   /** Differences found by a periodic resync while the socket was live. Should stay ~0. */
   driftCorrections: number;
+  /** Snapshot fields ignored because the socket had already delivered something newer. */
+  staleSnapshotSkips: number;
   invalidEntities: number;
 }
 
