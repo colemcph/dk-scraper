@@ -1,0 +1,27 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# One long-running Node web service (needed: it holds the DraftKings socket and serves SSE).
+services:
+  - type: web
+    name: betstamp-take-home
+    runtime: node
+    plan: free
+    region: ohio # closest Render region to both DraftKings' edge and Toronto
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: DK_SITE
+        value: dkcaon
+      - key: DK_WS_REGION
+        value: ca-on
+      - key: DK_LEAGUE_ID
+        value: "88808"
+      - key: DK_LEAGUE_NAME
+        value: NFL
+      - key: DK_SUBCATEGORY_ID
+        value: "4518"
+      - key: LOG_LEVEL
+        value: info

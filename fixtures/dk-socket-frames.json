@@ -1,0 +1,513 @@
+{
+  "capturedAt": "2026-09-13T01:26:03.300Z",
+  "league": "84240 (MLB, in-play)",
+  "note": "Real frames from wss://sportsbook-ws-ca-on.draftkings.com/websocket?format=json",
+  "frames": {
+    "ack": {
+      "id": "league-84240-4519",
+      "event": "subscribed",
+      "data": "",
+      "websocketPublishTimestamp": "2026-09-13T01:25:20.4570487+00:00"
+    },
+    "eventChange": {
+      "id": "league-84240-4519",
+      "event": "update",
+      "data": {
+        "data": {
+          "add": {
+            "events": [],
+            "markets": [],
+            "selections": [],
+            "leagues": [],
+            "sports": []
+          },
+          "remove": {
+            "events": [],
+            "markets": [],
+            "selections": []
+          },
+          "change": {
+            "events": [
+              {
+                "id": "34653925",
+                "startEventDate": "2026-09-12T23:10:20Z",
+                "participants": [
+                  {
+                    "id": "29847",
+                    "name": "MIL Brewers",
+                    "venueRole": "Home",
+                    "type": "Team",
+                    "metadata": {
+                      "rosettaTeamId": "29847",
+                      "rosettaTeamName": "Brewers",
+                      "shortName": "MIL",
+                      "startingPitcherPlayerId": "178741",
+                      "teamColor": "#13294B",
+                      "teamColorSecondary": "#FFC72C",
+                      "teamColorTertiary": "#FFFFFF",
+                      "startingPitcherPlayerName": "Shane Drohan"
+                    },
+                    "sortOrder": 2,
+                    "seoIdentifier": "Brewers",
+                    "tags": [],
+                    "isNationalTeam": false,
+                    "countryCode": "US"
+                  },
+                  {
+                    "id": "29919",
+                    "name": "CIN Reds",
+                    "venueRole": "Away",
+                    "type": "Team",
+                    "metadata": {
+                      "rosettaTeamId": "29919",
+                      "rosettaTeamName": "Reds",
+                      "shortName": "CIN",
+                      "startingPitcherPlayerId": "106447",
+                      "teamColor": "#C6011F",
+                      "teamColorSecondary": "#000000",
+                      "teamColorTertiary": "#FFFFFF",
+                      "startingPitcherPlayerName": "Brady Singer"
+                    },
+                    "sortOrder": 1,
+                    "seoIdentifier": "Reds",
+                    "tags": [],
+                    "isNationalTeam": false,
+                    "countryCode": "US"
+                  }
+                ],
+                "status": "STARTED",
+                "liveGameState": {
+                  "period": "7th",
+                  "isClockRunning": false,
+                  "isDelayed": false
+                },
+                "eventScorecard": {
+                  "mainScorecard": {
+                    "intervalName": "T",
+                    "intervalNumber": 2147483647,
+                    "firstTeamScore": "5",
+                    "secondTeamScore": "13",
+                    "liveScoreData": {
+                      "onServe": "1",
+                      "baseballBase": "0",
+                      "baseballOuts": "0"
+                    }
+                  },
+                  "scoreCards": [
+                    {
+                      "intervalName": "1",
+                      "intervalNumber": 1,
+                      "firstTeamScore": "0",
+                      "secondTeamScore": "4"
+                    },
+                    {
+                      "intervalName": "2",
+                      "intervalNumber": 2,
+                      "firstTeamScore": "1",
+                      "secondTeamScore": "0"
+                    },
+                    {
+                      "intervalName": "3",
+                      "intervalNumber": 3,
+                      "firstTeamScore": "1",
+                      "secondTeamScore": "1"
+                    },
+                    {
+                      "intervalName": "4",
+                      "intervalNumber": 4,
+                      "firstTeamScore": "3",
+                      "secondTeamScore": "3"
+                    },
+                    {
+                      "intervalName": "5",
+                      "intervalNumber": 5,
+                      "firstTeamScore": "0",
+                      "secondTeamScore": "5"
+                    },
+                    {
+                      "intervalName": "6",
+                      "intervalNumber": 6,
+                      "firstTeamScore": "0",
+                      "secondTeamScore": "0"
+                    },
+                    {
+                      "intervalName": "7",
+                      "intervalNumber": 7,
+                      "firstTeamScore": "0",
+                      "secondTeamScore": "0"
+                    },
+                    {
+                      "intervalName": "8",
+                      "intervalNumber": 8,
+                      "firstTeamScore": "",
+                      "secondTeamScore": ""
+                    },
+                    {
+                      "intervalName": "9",
+                      "intervalNumber": 9,
+                      "firstTeamScore": "",
+                      "secondTeamScore": ""
+                    },
+                    {
+                      "intervalName": "T",
+                      "intervalNumber": 2147483647,
+                      "firstTeamScore": "5",
+                      "secondTeamScore": "13",
+                      "liveScoreData": {
+                        "onServe": "1",
+                        "baseballBase": "0",
+                        "baseballOuts": "0"
+                      }
+                    }
+                  ],
+                  "scorecardComponentId": 1
+                },
+                "tags": [
+                  "FeaturedSubcategory",
+                  "Flashbet",
+                  "LiveBoxScore",
+                  "LiveStreaming",
+                  "MatchTracker",
+                  "OSB",
+                  "SGP",
+                  "Scoreboard",
+                  "SgpDynamicOdds",
+                  "Stats",
+                  "YourBetEligible"
+                ],
+                "metadata": {
+                  "masterLeagueId": "233",
+                  "numberOfParts": "9"
+                },
+                "sortOrder": 247099025,
+                "eventScore": {
+                  "mainScore": {
+                    "homeScore": "13",
+                    "awayScore": "5",
+                    "name": "R"
+                  },
+                  "gamePartScores": [
+                    {
+                      "homeScore": "4",
+                      "awayScore": "0",
+                      "name": "1"
+                    },
+                    {
+                      "homeScore": "0",
+                      "awayScore": "1",
+                      "name": "2"
+                    },
+                    {
+                      "homeScore": "1",
+                      "awayScore": "1",
+                      "name": "3"
+                    },
+                    {
+                      "homeScore": "3",
+                      "awayScore": "3",
+                      "name": "4"
+                    },
+                    {
+                      "homeScore": "5",
+                      "awayScore": "0",
+                      "name": "5"
+                    },
+                    {
+                      "homeScore": "0",
+                      "awayScore": "0",
+                      "name": "6"
+                    },
+                    {
+                      "homeScore": "0",
+                      "awayScore": "0",
+                      "name": "7"
+                    },
+                    {
+                      "name": "8"
+                    },
+                    {
+                      "name": "9"
+                    }
+                  ],
+                  "statScores": [
+                    {
+                      "homeScore": "14",
+                      "awayScore": "7",
+                      "name": "H"
+                    }
+                  ],
+                  "metadata": {
+                    "atBat": "home",
+                    "awayCurrentBatter": "160853",
+                    "awayNextBatter": "207311",
+                    "awayNextPlusOneBatter": "107290",
+                    "balls": "0",
+                    "bases": "000",
+                    "homeCurrentBatter": "108296",
+                    "homeNextBatter": "107847",
+                    "homeNextPlusOneBatter": "107096",
+                    "outs": "0",
+                    "strikes": "0"
+                  }
+                }
+              }
+            ],
+            "markets": [],
+            "selections": []
+          }
+        },
+        "metadata": {
+          "createdTime": "2026-09-13T01:25:20.609Z",
+          "receivedTime": "2026-09-13T01:25:20.616Z",
+          "publishedTime": "2026-09-13T01:25:20.620Z"
+        }
+      },
+      "context": {
+        "messageTags": [
+          "entity:events",
+          "initialdata:False",
+          "projection:sportsbook",
+          "language:en",
+          "connectiontype:WS",
+          "format:application/json",
+          "messageType:update"
+        ],
+        "receivedAt": "2026-09-13T01:25:20.7469609Z"
+      },
+      "websocketPublishTimestamp": "2026-09-13T01:25:20.7469811+00:00"
+    },
+    "selectionChange": {
+      "id": "league-84240-4519",
+      "event": "update",
+      "data": {
+        "data": {
+          "add": {
+            "events": [],
+            "markets": [],
+            "selections": [],
+            "leagues": [],
+            "sports": []
+          },
+          "remove": {
+            "events": [],
+            "markets": [],
+            "selections": []
+          },
+          "change": {
+            "events": [],
+            "markets": [],
+            "selections": [
+              {
+                "id": "0ML86275348_1",
+                "label": "STL Cardinals",
+                "displayOdds": {
+                  "american": "−112",
+                  "decimal": "1.89",
+                  "fractional": "25/28",
+                  "percentage": "52.8%",
+                  "priceGraphPercentage": "50%"
+                },
+                "trueOdds": 1.89285715,
+                "sortOrder": 6759944,
+                "tags": [
+                  "SGP",
+                  "OSB"
+                ]
+              }
+            ]
+          }
+        },
+        "metadata": {
+          "createdTime": "2026-09-13T01:25:24.453Z",
+          "receivedTime": "2026-09-13T01:25:24.462Z",
+          "publishedTime": "2026-09-13T01:25:24.878Z"
+        }
+      },
+      "context": {
+        "messageTags": [
+          "entity:events",
+          "initialdata:False",
+          "projection:sportsbook",
+          "language:en",
+          "connectiontype:WS",
+          "format:application/json",
+          "messageType:update"
+        ],
+        "receivedAt": "2026-09-13T01:25:24.8975768Z"
+      },
+      "websocketPublishTimestamp": "2026-09-13T01:25:24.8975864+00:00"
+    },
+    "marketChange": {
+      "id": "league-84240-4519",
+      "event": "update",
+      "data": {
+        "data": {
+          "add": {
+            "events": [],
+            "markets": [],
+            "selections": [],
+            "leagues": [],
+            "sports": []
+          },
+          "remove": {
+            "events": [],
+            "markets": [],
+            "selections": []
+          },
+          "change": {
+            "events": [],
+            "markets": [
+              {
+                "id": "1_86275334",
+                "name": "Moneyline",
+                "isSuspended": true,
+                "tags": [
+                  "YourBetEligible",
+                  "Cashout",
+                  "FeaturedSubcategory",
+                  "OSB",
+                  "Default",
+                  "PrimaryMarket"
+                ],
+                "sortOrder": 186275334,
+                "isTeamInPossession": false
+              }
+            ],
+            "selections": []
+          }
+        },
+        "metadata": {
+          "createdTime": "2026-09-13T01:25:31.627Z",
+          "receivedTime": "2026-09-13T01:25:31.635Z",
+          "publishedTime": "2026-09-13T01:25:31.642Z"
+        }
+      },
+      "context": {
+        "messageTags": [
+          "entity:events",
+          "initialdata:False",
+          "projection:sportsbook",
+          "language:en",
+          "connectiontype:WS",
+          "format:application/json",
+          "messageType:update"
+        ],
+        "receivedAt": "2026-09-13T01:25:31.6725058Z"
+      },
+      "websocketPublishTimestamp": "2026-09-13T01:25:31.6725083+00:00"
+    },
+    "add": {
+      "id": "league-84240-4519",
+      "event": "update",
+      "data": {
+        "data": {
+          "add": {
+            "events": [],
+            "markets": [],
+            "selections": [
+              {
+                "id": "0OU86275332U1150_3",
+                "marketId": "3_86275332",
+                "label": "Under",
+                "displayOdds": {
+                  "american": "−164",
+                  "decimal": "1.60",
+                  "fractional": "25/41",
+                  "percentage": "62.1%",
+                  "priceGraphPercentage": "62%"
+                },
+                "trueOdds": 1.6097561,
+                "points": 11.5,
+                "outcomeType": "Under",
+                "participants": [],
+                "sortOrder": 11502,
+                "tags": [
+                  "MainPointLine",
+                  "SGP",
+                  "OSB"
+                ],
+                "replacedSelectionId": "0OU86275332U1050_3",
+                "metadata": {}
+              }
+            ],
+            "leagues": [],
+            "sports": []
+          },
+          "remove": {
+            "events": [],
+            "markets": [],
+            "selections": []
+          },
+          "change": {
+            "events": [],
+            "markets": [],
+            "selections": []
+          }
+        },
+        "metadata": {
+          "createdTime": "2026-09-13T01:25:27.834Z",
+          "receivedTime": "2026-09-13T01:25:27.840Z",
+          "publishedTime": "2026-09-13T01:25:27.957Z"
+        }
+      },
+      "context": {
+        "messageTags": [
+          "entity:events",
+          "initialdata:False",
+          "projection:sportsbook",
+          "language:en",
+          "connectiontype:WS",
+          "format:application/json",
+          "messageType:update"
+        ],
+        "receivedAt": "2026-09-13T01:25:28.0472396Z"
+      },
+      "websocketPublishTimestamp": "2026-09-13T01:25:28.0472411+00:00"
+    },
+    "remove": {
+      "id": "league-84240-4519",
+      "event": "update",
+      "data": {
+        "data": {
+          "add": {
+            "events": [],
+            "markets": [],
+            "selections": [],
+            "leagues": [],
+            "sports": []
+          },
+          "remove": {
+            "events": [],
+            "markets": [],
+            "selections": [
+              "0HC86275332N750_1"
+            ]
+          },
+          "change": {
+            "events": [],
+            "markets": [],
+            "selections": []
+          }
+        },
+        "metadata": {
+          "createdTime": "2026-09-13T01:25:27.833Z",
+          "receivedTime": "2026-09-13T01:25:27.840Z",
+          "publishedTime": "2026-09-13T01:25:27.956Z"
+        }
+      },
+      "context": {
+        "messageTags": [
+          "entity:events",
+          "initialdata:False",
+          "projection:sportsbook",
+          "language:en",
+          "connectiontype:WS",
+          "format:application/json",
+          "messageType:update"
+        ],
+        "receivedAt": "2026-09-13T01:25:28.0471865Z"
+      },
+      "websocketPublishTimestamp": "2026-09-13T01:25:28.047193+00:00"
+    }
+  }
+}

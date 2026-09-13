@@ -1,0 +1,92 @@
+import type { MarketType, Odds, Side, SideKey } from '../../shared/types.js';
+
+export type OddsFormat = 'american' | 'decimal';
+
+export function formatOdds(odds: Odds, format: OddsFormat): string {
+  if (format === 'decimal') return odds.decimal.toFixed(2);
+  return odds.american > 0 ? `+${odds.american}` : String(odds.american);
+}
+
+export function formatLine(market: MarketType, side: SideKey, line: number | undefined): string {
+  if (line === undefined) return '';
+  if (market === 'total') return `${side === 'over' ? 'O' : 'U'} ${line}`;
+  if (market === 'spread') {
+    if (line === 0) return 'PK';
+    return line > 0 ? `+${line}` : String(line);
+  }
+  return '';
+}
+
+export function sideSummary(market: MarketType, side: Side, format: OddsFormat): string {
+  const line = formatLine(market, side.key, side.line);
+  const price = formatOdds(side.odds, format);
+  return line ? `${line} ${price}` : price;
+}
+
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+const dayFmt = new Intl.DateTimeFormat(undefined, {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+});
+const clockFmt = new Intl.DateTimeFormat(undefined, {
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+});
+const dayKeyFmt = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+export function formatKickoff(iso: string): string {
+  return timeFmt.format(new Date(iso));
+}
+
+export function formatDayHeading(iso: string): string {
+  return dayFmt.format(new Date(iso));
+}
+
+/** Stable per-day grouping key in the viewer's timezone (YYYY-MM-DD). */
+export function dayKey(iso: string): string {
+  return dayKeyFmt.format(new Date(iso));
+}
+
+export function formatClock(iso: string): string {
+  return clockFmt.format(new Date(iso));
+}
+
+export function localTimeZoneLabel(): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(
+      new Date(),
+    );
+    return parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** "3s ago", "2m ago", "1h ago" */
+export function formatAgo(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m ago`;
+}
+
+export function formatMs(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '—';
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+export const MARKET_LABEL: Record<MarketType, string> = {
+  moneyline: 'Moneyline',
+  spread: 'Spread',
+  total: 'Total',
+};
