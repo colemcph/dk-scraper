@@ -7,7 +7,7 @@ import type {
   Odds,
   SideKey,
   Team,
-} from '../../shared/types.js';
+} from '../shared/types.js';
 
 /**
  * The seam for adding another sportsbook: implement `BookAdapter` and hand it to the FeedManager.

@@ -1,10 +1,10 @@
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import type { AppConfig } from '../config.js';
-import type { FeedManager } from '../feed/feedManager.js';
-import type { Logger } from '../logger.js';
-import type { SseHub } from '../sse/hub.js';
+import type { AppConfig } from './config.js';
+import type { FeedManager } from './feed.js';
+import type { Logger } from './logger.js';
+import type { SseHub } from './sse.js';
 
 export interface AppDeps {
   feed: FeedManager;

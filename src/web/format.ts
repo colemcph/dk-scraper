@@ -1,4 +1,4 @@
-import type { MarketType, Odds, SideKey } from '../../shared/types.js';
+import type { MarketType, Odds, SideKey } from '../shared/types.js';
 
 export type OddsFormat = 'american' | 'decimal';
 

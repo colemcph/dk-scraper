@@ -1,6 +1,6 @@
-import type { DeltaEvent, FeedMeta, HeartbeatEvent, OddsSnapshot } from '../../shared/types.js';
-import type { FeedManager } from '../feed/feedManager.js';
-import type { Logger } from '../logger.js';
+import type { DeltaEvent, FeedMeta, HeartbeatEvent, OddsSnapshot } from '../shared/types.js';
+import type { FeedManager } from './feed.js';
+import type { Logger } from './logger.js';
 
 export interface SseMessage {
   event: string;

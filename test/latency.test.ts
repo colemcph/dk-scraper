@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LatencyTracker, percentile } from '../src/server/feed/latency.js';
+import { LatencyTracker, percentile } from '../src/server/latency.js';
 
 describe('LatencyTracker', () => {
   it('corrects for clock skew between DraftKings and this host', () => {

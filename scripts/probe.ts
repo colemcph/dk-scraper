@@ -8,7 +8,7 @@
  * Run it from a fresh deploy before trusting the host: Akamai scores datacenter IPs differently
  * from residential ones, and this tells you in 30 seconds whether you're blocked.
  */
-import { DK_LEAGUES, DraftKingsAdapter } from '../src/server/books/draftkings/index.js';
+import { DK_LEAGUES, DraftKingsAdapter } from '../src/server/draftkings/adapter.js';
 import { loadConfig } from '../src/server/config.js';
 import { createLogger } from '../src/server/logger.js';
 

@@ -4,7 +4,7 @@ import type {
   FeedMeta,
   FeedState,
   OddsSnapshot,
-} from '../../shared/types.js';
+} from '../shared/types.js';
 import type {
   BookAdapter,
   LeagueRef,
@@ -12,8 +12,8 @@ import type {
   SnapshotResult,
   SocketState,
   Subscription,
-} from '../books/types.js';
-import { errorMessage, type Logger } from '../logger.js';
+} from './book.js';
+import { errorMessage, type Logger } from './logger.js';
 import { LatencyTracker } from './latency.js';
 import type { ChangeSet, OddsStore } from './store.js';
 

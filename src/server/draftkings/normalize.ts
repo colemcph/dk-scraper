@@ -6,14 +6,14 @@ import type {
   Odds,
   SideKey,
   Team,
-} from '../../../shared/types.js';
+} from '../../shared/types.js';
 import type {
   GamePatch,
   GameUpsert,
   LeagueRef,
   NormalizedDelta,
   SelectionUpsert,
-} from '../types.js';
+} from '../book.js';
 import {
   DkEvent,
   DkIdRef,

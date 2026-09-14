@@ -1,15 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DkSocketClient, type SocketLike } from '../src/server/books/draftkings/ws.js';
-import { defaultSubscriptionSpec } from '../src/server/books/draftkings/normalize.js';
-import type {
-  NormalizedDelta,
-  SocketState,
-  SubscriptionHandlers,
-} from '../src/server/books/types.js';
+import { DkSocketClient, type SocketLike } from '../src/server/draftkings/ws.js';
+import { defaultSubscriptionSpec } from '../src/server/draftkings/normalize.js';
+import type { NormalizedDelta, SocketState, SubscriptionHandlers } from '../src/server/book.js';
 import { silentLogger } from '../src/server/logger.js';
 import { fixture } from './helpers.js';
 
-type Handler = (...args: unknown[]) => void;
+type Handler = (...args: never[]) => void;
 
 class FakeSocket implements SocketLike {
   sent: string[] = [];
@@ -25,7 +21,7 @@ class FakeSocket implements SocketLike {
     return this;
   }
   emit(event: string, ...args: unknown[]): void {
-    for (const cb of this.handlers.get(event) ?? []) cb(...args);
+    for (const cb of this.handlers.get(event) ?? []) (cb as (...a: unknown[]) => void)(...args);
   }
   send(data: string): void {
     this.sent.push(data);

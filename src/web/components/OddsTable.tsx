@@ -1,7 +1,7 @@
 import { Fragment, useMemo } from 'react';
 import type { Game, MarketType, SideKey } from '../../shared/types.js';
-import { cellKey, type Flash } from '../hooks/useOddsFeed.js';
-import { dayKey, formatDayHeading, formatKickoff, type OddsFormat } from '../lib/format.js';
+import { cellKey, type Flash } from '../useOddsFeed.js';
+import { dayKey, formatDayHeading, formatKickoff, type OddsFormat } from '../format.js';
 import { OddsCell } from './OddsCell.js';
 
 interface Props {

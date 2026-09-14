@@ -3,8 +3,8 @@ import { LatencyPanel } from './components/LatencyPanel.js';
 import { OddsTable } from './components/OddsTable.js';
 import { RecentMoves } from './components/RecentMoves.js';
 import { displayState, StatusStrip } from './components/StatusStrip.js';
-import { useOddsFeed } from './hooks/useOddsFeed.js';
-import { localTimeZoneLabel, percentile, type OddsFormat } from './lib/format.js';
+import { useOddsFeed } from './useOddsFeed.js';
+import { localTimeZoneLabel, percentile, type OddsFormat } from './format.js';
 
 const FORMAT_KEY = 'odds-format';
 

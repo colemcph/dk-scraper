@@ -1,4 +1,4 @@
-import type { RecentMove } from '../hooks/useOddsFeed.js';
+import type { RecentMove } from '../useOddsFeed.js';
 import {
   formatClock,
   formatLine,
@@ -6,7 +6,7 @@ import {
   formatOdds,
   MARKET_LABEL,
   type OddsFormat,
-} from '../lib/format.js';
+} from '../format.js';
 
 interface Props {
   moves: RecentMove[];

@@ -6,8 +6,8 @@ import type {
   HeartbeatEvent,
   OddsChange,
   OddsSnapshot,
-} from '../../shared/types.js';
-import { estimateClockOffset } from '../lib/timeSync.js';
+} from '../shared/types.js';
+import { estimateClockOffset } from './timeSync.js';
 
 export type Connection = 'connecting' | 'open' | 'reconnecting';
 export type FlashKind = 'up' | 'down' | 'line';

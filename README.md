@@ -79,15 +79,15 @@ Everything is configurable through environment variables — copy `.env.example`
 ```
                 DraftKings                                   this service (one Node process)                          browsers
  ┌─────────────────────────────────┐        ┌──────────────────────────────────────────────────────┐        ┌────────────────┐
- │ sportsbook-nash.draftkings.com  │◄───────┤ books/draftkings/rest.ts     snapshot (boot/resync)  │        │ React table    │
+ │ sportsbook-nash.draftkings.com  │◄───────┤ draftkings/rest.ts           snapshot (boot/resync)  │        │ React table    │
  │  /api/sportscontent/dkcaon/v1/  │        │                                                      │  SSE   │ flashes, prev  │
- │  leagues/88808   (full picture) │        │ books/draftkings/ws.ts       JSON-RPC subscribe,     │ ─────► │ price, LIVE /  │
+ │  leagues/88808   (full picture) │        │ draftkings/ws.ts             JSON-RPC subscribe,     │ ─────► │ price, LIVE /  │
  └─────────────────────────────────┘        │                              ping, reconnect         │        │ STALE, latency │
  ┌─────────────────────────────────┐        │        │ normalize.ts  (DraftKings → Game/Market/Side)│  REST  │ Refresh button │
  │ sportsbook-ws-ca-on.draftkings  │───────►│        ▼                                             │ ◄────► │                │
- │  /websocket?format=json (deltas)│        │ feed/store.ts ── ChangeSet ──► sse/hub.ts (fan-out)  │        └────────────────┘
- └─────────────────────────────────┘        │ feed/feedManager.ts  state machine · resync · stale  │
-                                            │ http/app.ts  /api/odds /api/stream /api/refresh …     │
+ │  /websocket?format=json (deltas)│        │ store.ts ──── ChangeSet ────► sse.ts (fan-out)       │        └────────────────┘
+ └─────────────────────────────────┘        │ feed.ts       state machine · resync · stale         │
+                                            │ api.ts        /api/odds /api/stream /api/refresh …   │
                                             └──────────────────────────────────────────────────────┘
 ```
 
@@ -233,7 +233,7 @@ Bounds in the other states:
 { "remove": { "selections": [ "0HC86275332N750_1" ] } }
 ```
 
-How the store copes (`src/server/feed/store.ts`):
+How the store copes (`src/server/store.ts`):
 
 1. Removals first, then adds, then changes, so a remove+add of the same id in one frame nets out.
 2. A selection is located by its own id → else by `replacedSelectionId` (re-keying the index) → else by `marketId + outcomeType` → else it's **unresolved**: counted, and a snapshot resync is scheduled (debounced 5 s).
@@ -309,7 +309,7 @@ npm run typecheck # server (NodeNext) + web (bundler) projects
 
 - `test/normalize.test.ts` — the real 75-game NFL payload and the real socket frames: every market/side mapped, U+2212, malformed entities dropped, non-main markets ignored, `replacedSelectionId`/`isSuspended`/remove lists.
 - `test/store.test.ts` — snapshot diffing, `prev` history, delta resolution by id / replaced id / market+side, unresolved reporting, idempotency, suspension, removal, and snapshot/delta ordering (an older snapshot cannot overwrite a newer socket write).
-- `test/feedManager.test.ts` — the state machine with a fake adapter and fake timers: bootstrap backoff, socket → polling fallback and recovery with gap-filling resync, latency attribution with skew, unresolved → resync, stale flag, refresh rate limit, drift counting, polling-only adapters.
+- `test/feed.test.ts` — the state machine with a fake adapter and fake timers: bootstrap backoff, socket → polling fallback and recovery with gap-filling resync, latency attribution with skew, unresolved → resync, stale flag, refresh rate limit, drift counting, polling-only adapters.
 - `test/ws.test.ts` — the socket client with a fake socket: subscribe payload, NTP-style skew from the ack, malformed frames, exponential backoff and reset, silence watchdog, clean stop.
 - `test/sse.test.ts` — snapshot on connect, versioned deltas, heartbeats, `Last-Event-ID` replay vs. fresh snapshot, dropping dead clients.
 - `test/latency.test.ts` — skew correction math, continuous skew tracking across a clock step, and percentiles.
@@ -348,9 +348,9 @@ The repo carries a **Render Blueprint** (`render.yaml`, free web service, Ohio r
 
 ## Adding a second sportsbook or league
 
-**Second league (≈1 hour).** DraftKings scopes everything by `leagueId` + main-lines `subcategoryId` (NFL `88808/4518`, MLB `84240/4519` — both verified). `DK_LEAGUES` in `books/draftkings/index.ts` becomes a registry, the socket client multiplexes one `subscribe` per league on the same connection (JSON-RPC ids are per subscription), the store keys games by `(book, league, id)`, the SSE stream gains a `league` field, and the UI gets tabs. Nothing in the store or the UI is NFL-specific today.
+**Second league (≈1 hour).** DraftKings scopes everything by `leagueId` + main-lines `subcategoryId` (NFL `88808/4518`, MLB `84240/4519` — both verified). `DK_LEAGUES` in `draftkings/adapter.ts` becomes a registry, the socket client multiplexes one `subscribe` per league on the same connection (JSON-RPC ids are per subscription), the store keys games by `(book, league, id)`, the SSE stream gains a `league` field, and the UI gets tabs. Nothing in the store or the UI is NFL-specific today.
 
-**Second sportsbook.** Implement `BookAdapter` (`src/server/books/types.ts`):
+**Second sportsbook.** Implement `BookAdapter` (`src/server/book.ts`):
 
 ```ts
 interface BookAdapter {
@@ -387,26 +387,30 @@ Verified on MLB in-play, not yet on an NFL Sunday: the `period` strings DraftKin
 
 ```
 src/
-  shared/types.ts                 domain model shared by server and UI
+  shared/types.ts        domain model shared by server and UI
   server/
-    index.ts                      wiring + graceful shutdown
+    index.ts             wiring + graceful shutdown
     config.ts  logger.ts
-    books/types.ts                BookAdapter contract, NormalizedDelta
-    books/draftkings/
-      rest.ts                     snapshot client (browser-like headers, cookie jar, timeout)
-      ws.ts                       JSON-RPC socket client (subscribe, ping, backoff, skew)
-      schema.ts                   lenient zod schemas for DraftKings payloads
-      normalize.ts                DraftKings → domain (snapshot and delta)
-      index.ts                    the adapter
-    feed/
-      store.ts                    in-memory state, snapshot diff, delta apply, indices
-      feedManager.ts              state machine, resync, polling fallback, stale
-      latency.ts                  skew estimation and percentiles
-    sse/hub.ts                    fan-out, replay buffer, heartbeats
-    http/app.ts                   routes + static
-  web/                            Vite + React: App, StatusStrip, OddsTable, OddsCell, RecentMoves, LatencyPanel
-fixtures/                         real DraftKings payloads captured 2026-09-12
-test/                             vitest
-scripts/probe.ts                  "can this host reach DraftKings?"
-docs/DECISIONS.md                 decision log
+    book.ts              BookAdapter contract + NormalizedDelta (the seam for a second sportsbook)
+    draftkings/
+      adapter.ts         the DraftKings adapter (+ league registry)
+      rest.ts            snapshot client (browser-like headers, cookie jar, timeout)
+      ws.ts              JSON-RPC socket client (subscribe, ping, backoff, skew)
+      schema.ts          lenient zod schemas for DraftKings payloads
+      normalize.ts       DraftKings → domain (snapshot and delta)
+    store.ts             in-memory state: snapshot diff, delta apply, id indices, ordering guard
+    feed.ts              state machine: bootstrap, socket, resync, polling fallback, stale
+    latency.ts           clock-skew tracking and percentiles
+    sse.ts               fan-out to browsers, replay buffer, heartbeats
+    api.ts               HTTP routes + static UI
+  web/
+    App.tsx  main.tsx  index.html  styles.css
+    useOddsFeed.ts       EventSource, reconnect, clock offset, flashes
+    format.ts  timeSync.ts
+    components/          OddsTable, OddsCell, StatusStrip, RecentMoves, LatencyPanel
+fixtures/                real DraftKings payloads captured 2026-09-12
+test/                    vitest (one file per server module)
+scripts/probe.ts         "can this host reach DraftKings?"
+scripts/chaos.ts         end-to-end resilience run against a mock DraftKings
+docs/DECISIONS.md        decision log
 ```

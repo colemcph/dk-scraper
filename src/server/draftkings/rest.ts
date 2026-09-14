@@ -1,4 +1,4 @@
-import { errorMessage } from '../../logger.js';
+import { errorMessage } from '../logger.js';
 
 /**
  * Why this looks like a browser: DraftKings sits behind Akamai, which fingerprints the TLS/HTTP

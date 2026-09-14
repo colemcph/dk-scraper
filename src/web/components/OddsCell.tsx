@@ -1,6 +1,6 @@
 import type { MarketType, Side } from '../../shared/types.js';
-import { FLASH_MS, type Flash } from '../hooks/useOddsFeed.js';
-import { formatLine, formatOdds, type OddsFormat } from '../lib/format.js';
+import { FLASH_MS, type Flash } from '../useOddsFeed.js';
+import { formatLine, formatOdds, type OddsFormat } from '../format.js';
 
 /** How long the previous price stays visible next to the new one. */
 const PREV_VISIBLE_MS = 60_000;

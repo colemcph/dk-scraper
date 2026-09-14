@@ -4,9 +4,9 @@ import type {
   LeagueRef,
   SnapshotResult,
   SubscriptionHandlers,
-} from '../src/server/books/types.js';
-import { FeedManager } from '../src/server/feed/feedManager.js';
-import { OddsStore } from '../src/server/feed/store.js';
+} from '../src/server/book.js';
+import { FeedManager } from '../src/server/feed.js';
+import { OddsStore } from '../src/server/store.js';
 import { silentLogger } from '../src/server/logger.js';
 import type { DeltaEvent, FeedMeta, Game } from '../src/shared/types.js';
 import { emptyDelta, game } from './helpers.js';

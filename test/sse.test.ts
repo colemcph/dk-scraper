@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FeedManager } from '../src/server/feed/feedManager.js';
+import type { FeedManager } from '../src/server/feed.js';
 import { silentLogger } from '../src/server/logger.js';
-import { SseHub, type SseMessage } from '../src/server/sse/hub.js';
+import { SseHub, type SseMessage } from '../src/server/sse.js';
 import type { DeltaEvent, FeedMeta, OddsSnapshot } from '../src/shared/types.js';
 import { game } from './helpers.js';
 

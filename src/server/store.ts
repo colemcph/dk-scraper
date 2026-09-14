@@ -6,8 +6,8 @@ import type {
   Side,
   SideKey,
   UpdateLatency,
-} from '../../shared/types.js';
-import type { NormalizedDelta } from '../books/types.js';
+} from '../shared/types.js';
+import type { NormalizedDelta } from './book.js';
 
 const MARKET_TYPES: readonly MarketType[] = ['moneyline', 'spread', 'total'];
 const SIDE_KEYS: readonly SideKey[] = ['away', 'home', 'over', 'under'];

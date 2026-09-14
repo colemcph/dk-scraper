@@ -2,13 +2,13 @@ import { serve } from '@hono/node-server';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DK_LEAGUES, DraftKingsAdapter } from './books/draftkings/index.js';
+import { DK_LEAGUES, DraftKingsAdapter } from './draftkings/adapter.js';
 import { loadConfig } from './config.js';
-import { FeedManager } from './feed/feedManager.js';
-import { OddsStore } from './feed/store.js';
-import { createApp } from './http/app.js';
+import { FeedManager } from './feed.js';
+import { OddsStore } from './store.js';
+import { createApp } from './api.js';
 import { createLogger } from './logger.js';
-import { SseHub } from './sse/hub.js';
+import { SseHub } from './sse.js';
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);

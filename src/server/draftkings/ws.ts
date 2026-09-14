@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
-import { errorMessage, type Logger } from '../../logger.js';
-import type { LeagueRef, SocketState, Subscription, SubscriptionHandlers } from '../types.js';
+import { errorMessage, type Logger } from '../logger.js';
+import type { LeagueRef, SocketState, Subscription, SubscriptionHandlers } from '../book.js';
 import { normalizeUpdateFrame } from './normalize.js';
 import { BROWSER_USER_AGENT } from './rest.js';
 import { DkSocketFrame, DkUpdateFrame, type DkSubscriptionPartialT } from './schema.js';

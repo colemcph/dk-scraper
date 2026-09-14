@@ -1,5 +1,5 @@
 import type { FeedMeta } from '../../shared/types.js';
-import { formatMs, percentile } from '../lib/format.js';
+import { formatMs, percentile } from '../format.js';
 
 interface Props {
   meta: FeedMeta | null;

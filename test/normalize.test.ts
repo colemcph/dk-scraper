@@ -7,8 +7,8 @@ import {
   normalizeUpdateFrame,
   parseAmerican,
   toOdds,
-} from '../src/server/books/draftkings/normalize.js';
-import { DkUpdateFrame } from '../src/server/books/draftkings/schema.js';
+} from '../src/server/draftkings/normalize.js';
+import { DkUpdateFrame } from '../src/server/draftkings/schema.js';
 import { clone, fixture } from './helpers.js';
 
 const NFL = { id: '88808', name: 'NFL', subcategoryId: '4518' };

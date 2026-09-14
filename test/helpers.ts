@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Game, Market, MarketType, Side, SideKey } from '../src/shared/types.js';
-import type { NormalizedDelta } from '../src/server/books/types.js';
+import type { NormalizedDelta } from '../src/server/book.js';
 
 export function fixture<T = unknown>(name: string): T {
   return JSON.parse(readFileSync(resolve(__dirname, '..', 'fixtures', name), 'utf8')) as T;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OddsStore } from '../src/server/feed/store.js';
+import { OddsStore } from '../src/server/store.js';
 import { clone, emptyDelta, game, T0 } from './helpers.js';
 
 const T1 = '2026-09-13T01:00:10.000Z';

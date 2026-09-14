@@ -1,4 +1,4 @@
-import type { LatencyStats, UpdateLatency } from '../../shared/types.js';
+import type { LatencyStats, UpdateLatency } from '../shared/types.js';
 
 /**
  * "How old is the number on the screen?" needs three clocks to agree: DraftKings', ours and the

@@ -1,11 +1,11 @@
-import type { Logger } from '../../logger.js';
+import type { Logger } from '../logger.js';
 import type {
   BookAdapter,
   LeagueRef,
   SnapshotResult,
   Subscription,
   SubscriptionHandlers,
-} from '../types.js';
+} from '../book.js';
 import { defaultSubscriptionSpec, normalizeSnapshot } from './normalize.js';
 import { DkRestClient, type DkRestOptions } from './rest.js';
 import { DkSubscriptionPartial } from './schema.js';

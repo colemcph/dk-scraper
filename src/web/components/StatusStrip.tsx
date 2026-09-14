@@ -1,7 +1,7 @@
 import type { FeedMeta } from '../../shared/types.js';
-import type { Connection } from '../hooks/useOddsFeed.js';
-import { formatAgo, formatClock, formatMs, type OddsFormat } from '../lib/format.js';
-import { serverAgoMs } from '../lib/timeSync.js';
+import type { Connection } from '../useOddsFeed.js';
+import { formatAgo, formatClock, formatMs, type OddsFormat } from '../format.js';
+import { serverAgoMs } from '../timeSync.js';
 
 interface Props {
   meta: FeedMeta | null;
