@@ -1,5 +1,7 @@
 # DraftKings NFL Live Odds — Betstamp take-home
 
+> **Live:** https://betstamp-take-home.onrender.com/
+
 **TL;DR of the choices**
 
 | Question in the brief                    | Answer                                                                                                                                                                                                                                                                                                                                                               |
@@ -316,10 +318,7 @@ Nothing in CI touches DraftKings. `npm run probe` is the opt-in live contract ch
 
 The repo carries a **Render Blueprint** (`render.yaml`, free web service, Ohio region) and a **Dockerfile** (works unchanged on Fly.io/Koyeb/anything that runs a container).
 
-1. Render → _New_ → _Blueprint_ → pick this repo → deploy. Health check is `/healthz`.
-2. Open `https://<service>.onrender.com/api/diagnostics` — `feedState: "live"` and `counters.socketUpdates` climbing means Akamai let the datacenter IP through. If it says `degraded` with a 403, that IP is blocked: switch region, or use the Docker image on another provider.
-3. Free instances sleep after 15 min idle (≈30 s cold start). Point a free pinger (cron-job.org / UptimeRobot) at `/healthz` every 5 min to keep it warm.
-
+Deployed on Render's free tier from `render.yaml` Free instances sleep after 15 idle minutes; a GitHub Actions job (`.github/workflows/keepalive.yml`) pings `/healthz` every 10 minutes to keep it warm.
 ---
 
 ## Adding a second sportsbook or league

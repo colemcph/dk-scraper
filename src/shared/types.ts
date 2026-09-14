@@ -135,8 +135,13 @@ export interface FeedCounters {
   restFailures: number;
   /** Selections that arrived on the socket but couldn't be placed (=> resync). */
   unresolvedDeltas: number;
-  /** Differences found by a periodic resync while the socket was live. Should stay ~0. */
+  /**
+   * Changes a resync found that the socket never delivered (given a grace window, since
+   * DraftKings publishes to the socket up to a few seconds after its engine moves a price).
+   */
   driftCorrections: number;
+  /** Changes a resync saw first that the socket then confirmed inside the grace window. */
+  snapshotLeads: number;
   /** Snapshot fields ignored because the socket had already delivered something newer. */
   staleSnapshotSkips: number;
   invalidEntities: number;

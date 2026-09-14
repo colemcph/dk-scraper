@@ -37,6 +37,8 @@ export interface ChangeSet {
 export interface DeltaResult extends ChangeSet {
   /** Upstream ids we could not place — the caller should resync from a snapshot. */
   unresolved: string[];
+  /** Positions the socket wrote with a value we already had (e.g. a snapshot got there first). */
+  unchanged: string[];
 }
 
 /** How long we remember that the socket touched a position, for snapshot/delta ordering. */
@@ -91,8 +93,10 @@ function makeChange(
 
 const gameKey = (gameId: string) => `game:${gameId}`;
 const marketKey = (gameId: string, market: MarketType) => `mkt:${gameId}:${market}`;
-const sideKey = (gameId: string, market: MarketType, side: SideKey) =>
-  `sel:${gameId}:${market}:${side}`;
+/** Stable key for one price cell; also used by the feed to match snapshot-found changes to later socket writes. */
+export const positionKey = (gameId: string, market: MarketType, side: SideKey) =>
+  `${gameId}:${market}:${side}`;
+const sideKey = positionKey;
 
 /**
  * Authoritative in-memory state for one book + league.
@@ -301,6 +305,7 @@ export class OddsStore {
     const touched = new Set<string>();
     const removed: string[] = [];
     const unresolved: string[] = [];
+    const unchanged: string[] = [];
 
     // 1. Removals first so a remove+add of the same id in one frame nets out correctly.
     for (const id of delta.selections.remove) {
@@ -436,6 +441,7 @@ export class OddsStore {
         }
         if (sameSide(existing, next)) {
           if (existing.prev) next.prev = existing.prev;
+          unchanged.push(positionKey(ref.gameId, ref.market, ref.side));
         } else {
           changes.push(makeChange(ref, existing, next, at, 'socket', latency));
           next.updatedAt = at;
@@ -470,6 +476,7 @@ export class OddsStore {
       changed,
       skippedStale: 0,
       unresolved,
+      unchanged,
     };
   }
 

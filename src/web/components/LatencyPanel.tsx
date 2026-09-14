@@ -35,7 +35,7 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
         </div>
         {lat && (lat.byPhase.inplay.samples > 0 || lat.byPhase.pregame.samples > 0) && (
           <div>
-            <dt title="Split by whether the game was in play when the price moved. DraftKings holds in-play prices before publishing them (their own timestamps show it); their website waits for the same publish.">
+            <dt title="Split by whether the game was in play when the price moved. The inside-DraftKings share is their engine-to-socket publish delay, which their own timestamps show varying from tens of milliseconds on quiet days to over a second during busy slates; their website waits for the same publish.">
               By game phase
             </dt>
             <dd className="small">
@@ -140,7 +140,7 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
         </div>
         {c && (
           <div>
-            <dt title="socket updates / snapshots / socket reconnects / drift corrections (changes a periodic snapshot found that the socket had not delivered — should stay 0) / stale-skips (snapshot fields ignored because the socket was newer)">
+            <dt title="socket updates / snapshots / socket reconnects / drift (changes a snapshot found that the socket never delivered, after a 15 s grace period — should stay 0) / snapshot-first (changes a snapshot saw before the socket published them; expected, since DraftKings publishes to the socket seconds after its engine moves) / stale-skips (snapshot fields ignored because the socket was newer)">
               Counters
             </dt>
             <dd className="small">
@@ -149,7 +149,8 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
               <span className={c.driftCorrections > 0 ? 'warn-text' : ''}>
                 {c.driftCorrections} drift
               </span>{' '}
-              · {c.staleSnapshotSkips} stale-skips · {c.invalidEntities} invalid
+              · {c.snapshotLeads} snapshot-first · {c.staleSnapshotSkips} stale-skips ·{' '}
+              {c.invalidEntities} invalid
             </dd>
           </div>
         )}
@@ -164,10 +165,11 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
       </dl>
       <p className="muted small">
         DraftKings stamps every push with its odds-engine <code>createdTime</code>; the number you
-        see is that stamp to this screen, not a poll interval. Pre-game moves land here tens of
-        milliseconds after DraftKings' engine; during live play DraftKings itself holds prices about
-        a second or two before publishing (their own timestamps show it), and only ~25 ms of the
-        total is this app. If the socket is down the page polls snapshots every 3 s and says so.
+        see is that stamp to this screen, not a poll interval. Of that, this app accounts for ~25
+        ms; the rest is DraftKings' own engine-to-socket publish delay, which their timestamps show
+        ranging from tens of milliseconds on quiet days to over a second during busy slates (their
+        website waits for the same publish). If the socket is down the page polls snapshots every 3
+        s and says so.
       </p>
     </section>
   );

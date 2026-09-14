@@ -220,11 +220,39 @@ describe('FeedManager', () => {
     const first = await h.feed.refresh();
     expect(first.ok).toBe(true);
     expect(first.changes).toBe(1);
-    expect(h.feed.meta().counters.driftCorrections).toBe(1);
+    // Not drift yet: DraftKings may simply not have published it to the socket.
+    expect(h.feed.meta().counters.driftCorrections).toBe(0);
 
     const second = await h.feed.refresh();
     expect(second.ok).toBe(false);
     expect(second.retryAfterMs).toBeGreaterThan(0);
+
+    // ...but if the socket never confirms it within the grace window, it is drift.
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(h.feed.meta().counters.driftCorrections).toBe(1);
+    h.feed.stop();
+  });
+
+  it('does not count a snapshot-first change as drift once the socket confirms it', async () => {
+    const h = setup();
+    h.feed.start();
+    await flush();
+    h.adapter.handlers!.onState('subscribed');
+    h.adapter.games[0]!.markets.total!.sides.over!.odds = { american: -120, decimal: 1.833 };
+    await h.feed.refresh();
+    expect(h.feed.meta().counters.driftCorrections).toBe(0);
+
+    // The socket publishes the same value a couple of seconds later.
+    await vi.advanceTimersByTimeAsync(2_000);
+    const confirm = emptyDelta();
+    confirm.selections.upsert.push({
+      sourceSelectionId: 'g1-t-o',
+      odds: { american: -120, decimal: 1.833 },
+    });
+    h.adapter.handlers!.onDelta(confirm);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(h.feed.meta().counters.snapshotLeads).toBe(1);
+    expect(h.feed.meta().counters.driftCorrections).toBe(0);
     h.feed.stop();
   });
 

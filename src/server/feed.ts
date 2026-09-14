@@ -15,7 +15,7 @@ import type {
 } from './book.js';
 import { errorMessage, type Logger } from './logger.js';
 import { LatencyTracker } from './latency.js';
-import type { ChangeSet, OddsStore } from './store.js';
+import { positionKey, type ChangeSet, type OddsStore } from './store.js';
 
 export interface FeedConfig {
   resyncIntervalMs: number;
@@ -28,6 +28,8 @@ export interface FeedConfig {
   bootstrapBackoffMaxMs?: number;
   /** Debounce for resyncs triggered by unresolved socket deltas. */
   unresolvedResyncDelayMs?: number;
+  /** How long the socket gets to confirm a change a snapshot saw first before it counts as drift. */
+  driftGraceMs?: number;
   staleCheckIntervalMs?: number;
 }
 
@@ -82,11 +84,14 @@ export class FeedManager {
     restFailures: 0,
     unresolvedDeltas: 0,
     driftCorrections: 0,
+    snapshotLeads: 0,
     staleSnapshotSkips: 0,
     invalidEntities: 0,
   };
   private unresolvedDelayMs = 0;
   private lastUnresolvedAt = 0;
+  /** position → when a live-mode resync changed it; cleared when the socket confirms the value */
+  private pendingSocketConfirm = new Map<string, number>();
 
   private stopped = false;
   private bootstrapAttempt = 0;
@@ -278,11 +283,12 @@ export class FeedManager {
       this.state === 'live' &&
       (reason === 'periodic' || reason === 'manual')
     ) {
-      // The socket should have told us already. Non-zero here means a missed delta.
-      this.counters.driftCorrections += cs.changes.length;
-      this.log.warn('resync found changes the socket did not deliver', {
-        count: cs.changes.length,
-      });
+      // The socket should deliver these too, but DraftKings publishes to the socket up to a few
+      // seconds after its engine moves a price, so a snapshot can legitimately see a change first.
+      // Only a change the socket never confirms within the grace window counts as drift.
+      for (const c of cs.changes) {
+        this.pendingSocketConfirm.set(positionKey(c.gameId, c.market, c.side), now);
+      }
     }
     if (cs.changes.length > 0) this.lastChangeAt = now;
     if (cs.changed) this.emitDelta(cs);
@@ -352,6 +358,9 @@ export class FeedManager {
     );
     if (latency) for (const change of result.changes) change.latency = latency;
 
+    for (const key of result.unchanged) {
+      if (this.pendingSocketConfirm.delete(key)) this.counters.snapshotLeads++;
+    }
     if (result.unresolved.length > 0) {
       this.counters.unresolvedDeltas += result.unresolved.length;
       this.log.warn('delta referenced unknown entities; scheduling resync', {
@@ -432,11 +441,29 @@ export class FeedManager {
   }
 
   private checkStale(): void {
-    const stale = this.isStale(this.now());
+    const now = this.now();
+    this.expireDrift(now);
+    const stale = this.isStale(now);
     if (stale !== this.lastStaleFlag) {
       this.lastStaleFlag = stale;
       this.log.warn(stale ? 'feed is stale' : 'feed is fresh again');
       this.emitMeta();
+    }
+  }
+
+  /** Snapshot-found changes the socket has not confirmed within the grace window are real drift. */
+  private expireDrift(now: number): void {
+    const window = this.opts.config.driftGraceMs ?? 15_000;
+    let expired = 0;
+    for (const [key, at] of this.pendingSocketConfirm) {
+      if (now - at > window) {
+        this.pendingSocketConfirm.delete(key);
+        expired++;
+      }
+    }
+    if (expired > 0) {
+      this.counters.driftCorrections += expired;
+      this.log.warn('resync found changes the socket never delivered', { count: expired });
     }
   }
 
