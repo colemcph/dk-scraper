@@ -110,6 +110,22 @@ export interface LatencyStats {
   skewSource: 'ack' | 'tracked' | null;
   /** Tightest subscribe round trip seen (bounds the skew uncertainty at RTT/2). */
   skewRttMs: number | null;
+  /**
+   * The same numbers split by whether the game was in play. DraftKings holds in-play prices
+   * ~1–2 s before publishing (visible in their own timestamps); pre-game moves publish in ~35 ms.
+   */
+  byPhase: Record<LatencyPhase, PhaseLatency>;
+}
+
+export type LatencyPhase = 'pregame' | 'inplay';
+
+export interface PhaseLatency {
+  samples: number;
+  /** DraftKings engine -> our server */
+  p50Ms: number | null;
+  p95Ms: number | null;
+  /** of which, inside DraftKings (their clocks only) */
+  pipelineP50Ms: number | null;
 }
 
 export interface FeedCounters {

@@ -1,4 +1,4 @@
-import type { LatencyStats, UpdateLatency } from '../shared/types.js';
+import type { LatencyPhase, LatencyStats, PhaseLatency, UpdateLatency } from '../shared/types.js';
 
 /**
  * "How old is the number on the screen?" needs three clocks to agree: DraftKings', ours and the
@@ -19,6 +19,10 @@ export class LatencyTracker {
   private totals: number[] = [];
   private pipelines: number[] = [];
   private transports: number[] = [];
+  private byPhase: Record<LatencyPhase, { totals: number[]; pipelines: number[] }> = {
+    pregame: { totals: [], pipelines: [] },
+    inplay: { totals: [], pipelines: [] },
+  };
   /** raw (receipt − publish) samples with our-clock timestamps, for the tracked skew */
   private window: { d: number; at: number }[] = [];
   private ackSkewMs: number | null = null;
@@ -59,7 +63,12 @@ export class LatencyTracker {
   }
 
   /** Builds the latency record for one delta and folds it into the stats. */
-  record(createdAt: string, publishedAt: string, receivedAt: string): UpdateLatency | undefined {
+  record(
+    createdAt: string,
+    publishedAt: string,
+    receivedAt: string,
+    phase: LatencyPhase = 'pregame',
+  ): UpdateLatency | undefined {
     const created = Date.parse(createdAt);
     const published = Date.parse(publishedAt);
     const received = Date.parse(receivedAt);
@@ -74,6 +83,8 @@ export class LatencyTracker {
     this.push(this.totals, dkToServerMs);
     this.push(this.pipelines, dkPipelineMs);
     this.push(this.transports, transportMs);
+    this.push(this.byPhase[phase].totals, dkToServerMs);
+    this.push(this.byPhase[phase].pipelines, dkPipelineMs);
     this.last = dkToServerMs;
 
     this.window.push({ d: received - published, at: received });
@@ -108,6 +119,21 @@ export class LatencyTracker {
       clockSkewMs: this.skewMs,
       skewSource: this.skewSource,
       skewRttMs: this.ackRttMs,
+      byPhase: {
+        pregame: this.phaseStats('pregame'),
+        inplay: this.phaseStats('inplay'),
+      },
+    };
+  }
+
+  private phaseStats(phase: LatencyPhase): PhaseLatency {
+    const totals = [...this.byPhase[phase].totals].sort((a, b) => a - b);
+    const pipelines = [...this.byPhase[phase].pipelines].sort((a, b) => a - b);
+    return {
+      samples: totals.length,
+      p50Ms: totals.length ? percentile(totals, 0.5) : null,
+      p95Ms: totals.length ? percentile(totals, 0.95) : null,
+      pipelineP50Ms: pipelines.length ? percentile(pipelines, 0.5) : null,
     };
   }
 
@@ -118,6 +144,10 @@ export class LatencyTracker {
     this.window = [];
     this.negativeTransport = 0;
     this.last = null;
+    this.byPhase = {
+      pregame: { totals: [], pipelines: [] },
+      inplay: { totals: [], pipelines: [] },
+    };
   }
 
   private push(arr: number[], v: number): void {

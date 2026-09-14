@@ -33,6 +33,28 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
             )}
           </dd>
         </div>
+        {lat && (lat.byPhase.inplay.samples > 0 || lat.byPhase.pregame.samples > 0) && (
+          <div>
+            <dt title="Split by whether the game was in play when the price moved. DraftKings holds in-play prices before publishing them (their own timestamps show it); their website waits for the same publish.">
+              By game phase
+            </dt>
+            <dd className="small">
+              {(['pregame', 'inplay'] as const).map((phase) => {
+                const p = lat.byPhase[phase];
+                if (p.samples === 0) return null;
+                return (
+                  <div key={phase}>
+                    {phase === 'inplay' ? 'in-play' : 'pre-game'}: p50{' '}
+                    <strong>{formatMs(p.p50Ms)}</strong> · p95 {formatMs(p.p95Ms)}{' '}
+                    <span className="muted">
+                      (of which inside DraftKings {formatMs(p.pipelineP50Ms)}; {p.samples} updates)
+                    </span>
+                  </div>
+                );
+              })}
+            </dd>
+          </div>
+        )}
         <div>
           <dt title="createdTime → websocketPublishTimestamp on DraftKings' own clocks (no skew involved), then socket publish → our receipt after skew correction">
             Breakdown
@@ -142,8 +164,10 @@ export function LatencyPanel({ meta, browserLegSamples, clockOffsetMs, clockRttM
       </dl>
       <p className="muted small">
         DraftKings stamps every push with its odds-engine <code>createdTime</code>; the number you
-        see is that stamp to this screen, not a poll interval. Pushes usually arrive well under a
-        second after the move; if the socket is down the page polls snapshots every 3 s and says so.
+        see is that stamp to this screen, not a poll interval. Pre-game moves land here tens of
+        milliseconds after DraftKings' engine; during live play DraftKings itself holds prices about
+        a second or two before publishing (their own timestamps show it), and only ~25 ms of the
+        total is this app. If the socket is down the page polls snapshots every 3 s and says so.
       </p>
     </section>
   );

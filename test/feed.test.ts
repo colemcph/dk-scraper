@@ -168,7 +168,18 @@ describe('FeedManager', () => {
       skewCorrected: true,
     });
     expect(h.feed.meta().latency.p50Ms).toBe(150);
-    expect(h.feed.meta().counters.socketUpdates).toBe(1);
+    expect(h.feed.meta().latency.byPhase.pregame.samples).toBe(1);
+
+    // Once the game is live, its samples are attributed to the in-play bucket.
+    const live = emptyDelta();
+    live.games.patch.push({ id: 'g1', status: 'live' });
+    live.selections.upsert.push({
+      sourceSelectionId: 'g1-ml-h',
+      odds: { american: -150, decimal: 1.667 },
+    });
+    h.adapter.handlers!.onDelta(live);
+    expect(h.feed.meta().latency.byPhase.inplay.samples).toBe(1);
+    expect(h.feed.meta().counters.socketUpdates).toBe(2);
 
     const fetches = h.adapter.fetches;
     const ghost = emptyDelta();

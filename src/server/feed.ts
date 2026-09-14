@@ -339,8 +339,18 @@ export class FeedManager {
     this.counters.invalidEntities += delta.invalidEntities;
     this.touch(now);
 
-    const latency = this.latency.record(delta.createdAt, delta.publishedAt, delta.receivedAt);
-    const result = this.opts.store.applyDelta(delta, latency);
+    const result = this.opts.store.applyDelta(delta);
+    // DraftKings holds in-play prices before publishing; keep those samples apart from pre-game moves.
+    const inplay = result.touchedGameIds.some(
+      (id) => this.opts.store.getGame(id)?.status === 'live',
+    );
+    const latency = this.latency.record(
+      delta.createdAt,
+      delta.publishedAt,
+      delta.receivedAt,
+      inplay ? 'inplay' : 'pregame',
+    );
+    if (latency) for (const change of result.changes) change.latency = latency;
 
     if (result.unresolved.length > 0) {
       this.counters.unresolvedDeltas += result.unresolved.length;

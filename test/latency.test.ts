@@ -27,6 +27,8 @@ describe('LatencyTracker', () => {
       skewSource: 'ack',
       skewRttMs: 40,
     });
+    expect(t.stats().byPhase.pregame.samples).toBe(1);
+    expect(t.stats().byPhase.inplay.samples).toBe(0);
   });
 
   it('never reports negative latency and works without a skew estimate', () => {
