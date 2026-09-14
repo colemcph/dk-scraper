@@ -30,12 +30,22 @@ type RestMode = 'ok' | 'garbage' | 'error';
 let restMode: RestMode = 'ok';
 
 const fixture = JSON.parse(readFileSync(resolve('fixtures/dk-league-88808.json'), 'utf8')) as {
+  events: Array<{ startEventDate: string }>;
   selections: Array<{
     id: string;
     trueOdds?: number;
     displayOdds?: { american?: string; decimal?: string };
   }>;
 };
+// The fixture was captured in September 2026; shift every kickoff so the earliest is tomorrow,
+// otherwise the store's "kicked off hours ago" guard hides games and the run stops being reproducible.
+{
+  const earliest = Math.min(...fixture.events.map((e) => Date.parse(e.startEventDate)));
+  const shift = Date.now() + 24 * 60 * 60_000 - earliest;
+  for (const e of fixture.events) {
+    e.startEventDate = new Date(Date.parse(e.startEventDate) + shift).toISOString();
+  }
+}
 const TARGET_SEL = '0ML84695643_1'; // DET Lions moneyline, -325 in the fixture
 const target = fixture.selections.find((s) => s.id === TARGET_SEL)!;
 
