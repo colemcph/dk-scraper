@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DraftKingsAdapter } from './books/draftkings/index.js';
+import { DK_LEAGUES, DraftKingsAdapter } from './books/draftkings/index.js';
 import { loadConfig } from './config.js';
 import { FeedManager } from './feed/feedManager.js';
 import { OddsStore } from './feed/store.js';
@@ -13,9 +13,10 @@ import { SseHub } from './sse/hub.js';
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
 
+const known = Object.values(DK_LEAGUES).find((l) => l.id === config.dk.leagueId);
 const league = {
   id: config.dk.leagueId,
-  name: config.dk.leagueName,
+  name: config.dk.leagueName || known?.name || config.dk.leagueId,
   subcategoryId: config.dk.subcategoryId,
 };
 

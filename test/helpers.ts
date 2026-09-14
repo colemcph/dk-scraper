@@ -8,6 +8,8 @@ export function fixture<T = unknown>(name: string): T {
 }
 
 export const T0 = '2026-09-13T01:00:00.000Z';
+/** Default kickoff for test games: tomorrow, so the store's "kicked off hours ago" guard never trips. */
+export const KICKOFF = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
 
 export function side(key: SideKey, american: number, line?: number, id?: string): Side {
   const decimal = american > 0 ? 1 + american / 100 : 1 + 100 / Math.abs(american);
@@ -32,7 +34,7 @@ export function game(id: string, overrides: Partial<Game> = {}): Game {
     id,
     book: 'draftkings',
     league: '88808',
-    startTime: '2026-09-13T17:00:00.000Z',
+    startTime: KICKOFF,
     status: 'upcoming',
     home: { id: `${id}-h`, name: 'Home Team', shortName: 'HOM' },
     away: { id: `${id}-a`, name: 'Away Team', shortName: 'AWY' },

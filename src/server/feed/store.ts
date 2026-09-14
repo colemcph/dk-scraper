@@ -9,8 +9,8 @@ import type {
 } from '../../shared/types.js';
 import type { NormalizedDelta } from '../books/types.js';
 
-export const MARKET_TYPES: readonly MarketType[] = ['moneyline', 'spread', 'total'];
-export const SIDE_KEYS: readonly SideKey[] = ['away', 'home', 'over', 'under'];
+const MARKET_TYPES: readonly MarketType[] = ['moneyline', 'spread', 'total'];
+const SIDE_KEYS: readonly SideKey[] = ['away', 'home', 'over', 'under'];
 
 interface SelectionRef {
   gameId: string;

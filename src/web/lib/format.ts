@@ -1,4 +1,4 @@
-import type { MarketType, Odds, Side, SideKey } from '../../shared/types.js';
+import type { MarketType, Odds, SideKey } from '../../shared/types.js';
 
 export type OddsFormat = 'american' | 'decimal';
 
@@ -15,12 +15,6 @@ export function formatLine(market: MarketType, side: SideKey, line: number | und
     return line > 0 ? `+${line}` : String(line);
   }
   return '';
-}
-
-export function sideSummary(market: MarketType, side: Side, format: OddsFormat): string {
-  const line = formatLine(market, side.key, side.line);
-  const price = formatOdds(side.odds, format);
-  return line ? `${line} ${price}` : price;
 }
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });

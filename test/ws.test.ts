@@ -143,10 +143,11 @@ describe('DkSocketClient', () => {
       'message',
       Buffer.from(JSON.stringify({ id: 'x', error: { code: 42, message: 'nope' } })),
     );
-    expect(h.errors).toHaveLength(2);
+    h.sockets[0]!.emit('message', Buffer.from('[1,2,3]'));
+    expect(h.errors).toHaveLength(3);
     // A frame of an unknown-but-harmless shape is ignored rather than treated as an error.
     h.sockets[0]!.emit('message', Buffer.from(JSON.stringify({ totally: 'unexpected' })));
-    expect(h.errors).toHaveLength(2);
+    expect(h.errors).toHaveLength(3);
     expect(h.deltas).toHaveLength(1);
   });
 

@@ -46,7 +46,7 @@ export function americanFromDecimal(decimal: number): number {
   return -Math.round(100 / (decimal - 1));
 }
 
-export function decimalFromAmerican(american: number): number {
+function decimalFromAmerican(american: number): number {
   const d = american > 0 ? 1 + american / 100 : 1 + 100 / Math.abs(american);
   return Math.round(d * 1000) / 1000;
 }
@@ -98,7 +98,7 @@ const MARKET_BY_ID_PREFIX: Record<string, MarketType> = {
   '3': 'total',
 };
 
-export function marketTypeOf(market: DkMarketT): MarketType | undefined {
+function marketTypeOf(market: DkMarketT): MarketType | undefined {
   const byName =
     MARKET_BY_NAME[(market.marketType?.name ?? market.name ?? '').trim().toLowerCase()];
   if (byName) return byName;
@@ -180,7 +180,7 @@ function isValidDate(iso: string | undefined): iso is string {
   return !!iso && Number.isFinite(Date.parse(iso));
 }
 
-export function normalizeEvent(raw: unknown, at: string): GameUpsert | undefined {
+function normalizeEvent(raw: unknown, at: string): GameUpsert | undefined {
   const parsed = DkEvent.safeParse(raw);
   if (!parsed.success) return undefined;
   const ev = parsed.data;
@@ -199,7 +199,7 @@ export function normalizeEvent(raw: unknown, at: string): GameUpsert | undefined
   };
 }
 
-export function patchFromEvent(raw: unknown): GamePatch | undefined {
+function patchFromEvent(raw: unknown): GamePatch | undefined {
   const parsed = DkEvent.safeParse(raw);
   if (!parsed.success) return undefined;
   const ev = parsed.data;
@@ -216,7 +216,7 @@ export function patchFromEvent(raw: unknown): GamePatch | undefined {
   return patch;
 }
 
-export function sideKeyOf(
+function sideKeyOf(
   sel: DkSelectionT,
   marketType: MarketType | undefined,
   teams?: { home: Team; away: Team },
@@ -244,7 +244,7 @@ export function sideKeyOf(
  * Snapshot
  * ---------------------------------------------------------------------------------------------- */
 
-export interface NormalizedSnapshot {
+interface NormalizedSnapshot {
   games: Game[];
   leagueName?: string;
   subscriptionSpec?: DkSubscriptionPartialT;

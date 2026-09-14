@@ -52,7 +52,7 @@ export function loadConfig(): AppConfig {
       site: str('DK_SITE', 'dkcaon'),
       wsRegion: str('DK_WS_REGION', 'ca-on'),
       leagueId: str('DK_LEAGUE_ID', '88808'),
-      leagueName: str('DK_LEAGUE_NAME', 'NFL'),
+      leagueName: str('DK_LEAGUE_NAME', ''),
       subcategoryId: str('DK_SUBCATEGORY_ID', '4518'),
       ...(process.env.DK_REST_BASE_URL ? { restBaseUrl: process.env.DK_REST_BASE_URL } : {}),
       ...(process.env.DK_WS_URL ? { wsUrl: process.env.DK_WS_URL } : {}),

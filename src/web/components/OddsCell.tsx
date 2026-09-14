@@ -3,7 +3,7 @@ import { FLASH_MS, type Flash } from '../hooks/useOddsFeed.js';
 import { formatLine, formatOdds, type OddsFormat } from '../lib/format.js';
 
 /** How long the previous price stays visible next to the new one. */
-export const PREV_VISIBLE_MS = 60_000;
+const PREV_VISIBLE_MS = 60_000;
 
 interface Props {
   market: MarketType;

@@ -94,7 +94,7 @@ export class DkSocketClient implements Subscription {
       }
       this.socket = null;
     }
-    this.setState('closed');
+    this.setState('closed', { code: 1000, reason: 'client shutdown' });
   }
 
   /* ---------------------------------------------------------------------------------------- */
@@ -208,18 +208,16 @@ export class DkSocketClient implements Subscription {
     }
     const frame = DkSocketFrame.safeParse(json);
     if (!frame.success) {
-      this.opts.handlers.onError(new Error('socket frame did not match any known shape'));
+      this.opts.handlers.onError(new Error('socket frame is not an object'));
       return;
     }
     const f = frame.data;
-
-    if ('error' in f && f.error !== undefined && f.error !== null) {
+    if (f.error !== undefined && f.error !== null) {
       this.opts.handlers.onError(
-        new Error(`socket error frame: ${JSON.stringify(f.error as unknown).slice(0, 200)}`),
+        new Error(`socket error frame: ${JSON.stringify(f.error).slice(0, 200)}`),
       );
       return;
     }
-    if (!('event' in f)) return;
 
     switch (f.event) {
       case 'subscribed': {

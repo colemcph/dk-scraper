@@ -163,18 +163,15 @@ export const DkUpdateFrame = z
   })
   .passthrough();
 
-export const DkSocketFrame = z.union([
-  DkUpdateFrame,
-  z
-    .object({
-      id: z.string().optional(),
-      event: z.string(),
-      websocketPublishTimestamp: z.string().optional(),
-      error: z.unknown().optional(),
-    })
-    .passthrough(),
-  z.object({ id: z.string().optional(), error: z.unknown() }).passthrough(),
-]);
+/** Any socket frame: acks, updates, unsubscribes, errors. Specific shapes are checked by the caller. */
+export const DkSocketFrame = z
+  .object({
+    id: z.string().optional(),
+    event: z.string().optional(),
+    websocketPublishTimestamp: z.string().optional(),
+    error: z.unknown().optional(),
+  })
+  .passthrough();
 
 export type DkParticipantT = z.infer<typeof DkParticipant>;
 export type DkEventT = z.infer<typeof DkEvent>;
