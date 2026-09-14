@@ -220,6 +220,8 @@ Bounds in the other states:
 { "remove": { "selections": [ "0HC86275332N750_1" ] } }
 ```
 
+**Verified on a live NFL game** (Sunday Night Football, Week 1): status `STARTED`, period labels like `"1st Quarter"`, a `gameTime` countdown in seconds (rendered as the clock beside the period), the same three main-market ids carried from pre-game into live play, 132 socket frames in two minutes (79 selection changes, 6 add/remove pairs for line moves, 4 suspensions) — all handled by the paths above — and finished games disappearing from the snapshot, which is what drops them from the table.
+
 ---
 
 ## Failure modes
