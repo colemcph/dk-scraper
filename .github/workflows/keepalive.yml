@@ -1,0 +1,17 @@
+# Render's free tier spins the service down after 15 minutes without inbound traffic
+# (~30 s cold start, and the DraftKings socket has to be re-opened). A request every
+# 10 minutes keeps it warm. GitHub's scheduler can lag by a few minutes under load and
+# disables scheduled workflows after 60 days without a commit — an external pinger
+# (cron-job.org / UptimeRobot) on /healthz is the belt to this pair of braces.
+name: Keep-alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 90 https://betstamp-take-home.onrender.com/healthz
