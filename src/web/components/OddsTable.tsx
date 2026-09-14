@@ -70,6 +70,7 @@ export function OddsTable({ games, format, flashes, serverNow, tzLabel }: Props)
                             <span className="live-pill">
                               <span className="live-dot" /> LIVE
                               {game.live?.period ? ` · ${game.live.period}` : ''}
+                              {game.live?.clock ? ` · ${game.live.clock}` : ''}
                             </span>
                           ) : (
                             formatKickoff(game.startTime)

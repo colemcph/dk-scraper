@@ -50,6 +50,8 @@ export const DkEvent = z
       .object({
         period: z.string().optional(),
         isClockRunning: z.boolean().optional(),
+        /** seconds left in the period (NFL) */
+        gameTime: z.number().optional(),
       })
       .passthrough()
       .optional(),

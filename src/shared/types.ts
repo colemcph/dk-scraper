@@ -55,7 +55,10 @@ export interface Team {
 }
 
 export interface LiveState {
+  /** "1st Quarter", "5th", ... as DraftKings labels it */
   period?: string;
+  /** "13:45" — time left in the period, when DraftKings provides it */
+  clock?: string;
   homeScore?: number;
   awayScore?: number;
   clockRunning?: boolean;

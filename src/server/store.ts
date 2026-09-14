@@ -59,6 +59,7 @@ function sameLive(a: Game['live'], b: Game['live']): boolean {
   if (!a || !b) return false;
   return (
     a.period === b.period &&
+    a.clock === b.clock &&
     a.homeScore === b.homeScore &&
     a.awayScore === b.awayScore &&
     a.clockRunning === b.clockRunning

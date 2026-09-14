@@ -168,6 +168,11 @@ function liveOf(ev: DkEventT): LiveState | undefined {
   const live: LiveState = {};
   if (state?.period) live.period = state.period;
   if (typeof state?.isClockRunning === 'boolean') live.clockRunning = state.isClockRunning;
+  if (typeof state?.gameTime === 'number' && state.gameTime >= 0) {
+    const m = Math.floor(state.gameTime / 60);
+    const s = Math.floor(state.gameTime % 60);
+    live.clock = `${m}:${String(s).padStart(2, '0')}`;
+  }
   // DraftKings lists the away team first (sortOrder 1) for North American sports.
   const first = score?.firstTeamScore !== undefined ? Number(score.firstTeamScore) : undefined;
   const second = score?.secondTeamScore !== undefined ? Number(score.secondTeamScore) : undefined;

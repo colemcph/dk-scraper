@@ -169,6 +169,31 @@ describe('normalizeUpdateFrame (real socket frames)', () => {
     expect(delta.markets.upsert).toHaveLength(0);
   });
 
+  it('formats the NFL game clock from gameTime seconds', () => {
+    const frame = DkUpdateFrame.parse({
+      event: 'update',
+      data: {
+        data: {
+          change: {
+            events: [
+              {
+                id: '1',
+                status: 'STARTED',
+                liveGameState: { period: '1st Quarter', gameTime: 825, isClockRunning: true },
+              },
+            ],
+          },
+        },
+      },
+    });
+    const delta = normalizeUpdateFrame(frame, NFL, AT);
+    expect(delta.games.patch[0]!.live).toEqual({
+      period: '1st Quarter',
+      clock: '13:45',
+      clockRunning: true,
+    });
+  });
+
   it('extracts status and live score from an event change', () => {
     const delta = normalizeUpdateFrame(parse('eventChange'), MLB, AT);
     expect(delta.games.patch).toHaveLength(1);
