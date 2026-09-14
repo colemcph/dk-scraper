@@ -41,7 +41,7 @@ export interface FeedClientState {
   browserLegSamples: number[];
 }
 
-type Action =
+export type Action =
   | { type: 'snapshot'; snapshot: OddsSnapshot; at: number }
   | { type: 'delta'; delta: DeltaEvent; at: number; offset: number | null }
   | { type: 'meta'; meta: FeedMeta; at: number }
@@ -58,7 +58,7 @@ export function cellKey(gameId: string, market: string, side: string): string {
   return `${gameId}:${market}:${side}`;
 }
 
-const initialState: FeedClientState = {
+export const initialState: FeedClientState = {
   games: {},
   meta: null,
   connection: 'connecting',
@@ -78,7 +78,7 @@ function flashKind(change: OddsChange): FlashKind {
   return change.nextOdds.decimal > change.prevOdds.decimal ? 'up' : 'down';
 }
 
-function reducer(state: FeedClientState, action: Action): FeedClientState {
+export function reducer(state: FeedClientState, action: Action): FeedClientState {
   switch (action.type) {
     case 'snapshot': {
       const games: Record<string, Game> = {};

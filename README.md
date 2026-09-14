@@ -1,9 +1,5 @@
 # DraftKings NFL Live Odds — Betstamp take-home
 
-> **Live:** _(Render URL — see [Deploying](#deploying))_ · **Repo:** this one
->
-> Moneyline, spread and total for every upcoming NFL game on **DraftKings Ontario**, pushed to the page the moment DraftKings moves a line. One small Node/TypeScript service holds a single connection to DraftKings' own push feed, keeps a normalized in-memory odds store, and fans it out to browsers over Server-Sent Events. A React page renders the table, flashes changes, keeps the previous price beside the new one, and shows — honestly — how old every number is.
-
 **TL;DR of the choices**
 
 | Question in the brief                    | Answer                                                                                                                                                                                                                                                                                                                                                               |
@@ -31,7 +27,6 @@
 - [Deploying](#deploying)
 - [Adding a second sportsbook or league](#adding-a-second-sportsbook-or-league)
 - [Where AI and tooling would help this scale](#where-ai-and-tooling-would-help-this-scale)
-- [Limits and ethics](#limits-and-ethics)
 - [Project layout](#project-layout)
 
 ---
@@ -123,20 +118,17 @@ Side    { key, label, line?, odds: { american, decimal }, prev?: { line?, odds, 
 
 ## Why this approach
 
-| Option                                            | Latency                       | Reliability                          | Effort  | Verdict                                                                                      |
-| ------------------------------------------------- | ----------------------------- | ------------------------------------ | ------- | -------------------------------------------------------------------------------------------- |
-| **Snapshot API polling**                          | poll interval + 1 s CDN cache | High, simple                         | Low     | **Bootstrap, resync, fallback**                                                              |
-| **Delta WebSocket** (what DraftKings' site uses)  | **sub-second**                | High once connected; needs indices   | Medium  | **Primary live channel**                                                                     |
-| Headless browser (Playwright) scraping the page   | seconds; heavy CPU/RAM        | Brittle to DOM changes               | Medium  | Escape hatch only (its request context is a fallback if Node's TLS fingerprint gets blocked) |
-| Scraping the 2.5 MB SSR HTML                      | as polling, 6× the bytes      | Brittle                              | Low     | No                                                                                           |
-| Third-party odds API                              | minutes                       | High                                 | Trivial | Rejected — it isn't "from DraftKings" and demonstrates nothing                               |
-| Browser fetches DraftKings directly (static site) | —                             | CORS blocks it; per-visitor exposure | —       | Rejected                                                                                     |
+| Option                                           | Latency                       | Reliability                        | Effort | Verdict                                                                                      |
+| ------------------------------------------------ | ----------------------------- | ---------------------------------- | ------ | -------------------------------------------------------------------------------------------- |
+| **Snapshot API polling**                         | poll interval + 1 s CDN cache | High, simple                       | Low    | **Bootstrap, resync, fallback**                                                              |
+| **Delta WebSocket** (what DraftKings' site uses) | **sub-second**                | High once connected; needs indices | Medium | **Primary live channel**                                                                     |
+| Headless browser (Playwright) scraping the page  | seconds; heavy CPU/RAM        | Brittle to DOM changes             | Medium | Escape hatch only (its request context is a fallback if Node's TLS fingerprint gets blocked) |
 
-The hybrid is literally what DraftKings' front end does (snapshot BFF + "Longshot" socket), gives one upstream connection regardless of visitor count, and the REST channel doubles as a correctness oracle. It was chosen after an evening of reconnaissance rather than by assumption: I grepped DraftKings' JS bundles for the socket URL and protocol, then subscribed from Node and watched 74 deltas arrive in 30 s on in-play games before writing a line of app code.
+The hybrid is what DraftKings' front end does (snapshot BFF + "Longshot" socket), gives one upstream connection regardless of visitor count, and the REST channel doubles as a correctness oracle. It was chosen after an evening of reconnaissance rather than by assumption: I grepped DraftKings' JS bundles for the socket URL and protocol, then subscribed from Node and watched 74 deltas arrive in 30 s on in-play games before writing a line of app code.
 
 ### Why Node
 
-Not a preference — a measurement. DraftKings sits behind Akamai, which fingerprints the TLS client. From the same machine, same headers:
+DraftKings sits behind Akamai, which fingerprints the TLS client. From the same machine, same headers:
 
 | Client                          | `GET …/leagues/88808`                        |
 | ------------------------------- | -------------------------------------------- |
@@ -158,7 +150,7 @@ A free-tier box can hold one socket to DraftKings and fan out to any number of t
 
 ## How fresh are the odds
 
-Three clocks are involved (DraftKings', the server's, the browser's), so "how old is this number" is computed, not guessed:
+Three clocks are involved (DraftKings', the server's, the browser's):
 
 - **DraftKings stamps every delta** with `metadata.createdTime` (odds engine) and `websocketPublishTimestamp` (socket layer). Their internal pipeline is ~60 ms.
 - **Server ↔ DraftKings skew** is estimated NTP-style from the subscribe round trip (their ack carries their time; RTT/2 ≈ 20 ms is the uncertainty) and then **refined continuously** from every frame: `receipt − publish` over a 10-minute window has a floor of `−skew + one-way`, so the estimate follows the frames even if the host clock steps mid-session (which the dev laptop did — it was 1.85 s behind DraftKings' clock at one point and re-synced later).
@@ -166,7 +158,7 @@ Three clocks are involved (DraftKings', the server's, the browser's), so "how ol
 - **Browser ↔ server skew** is estimated the same way from `/api/time`.
 - Reported per update: `dkToServerMs = receive − (createdTime − skew)` and `serverToBrowserMs = (browserReceive − browserOffset) − emittedAt`. p50/p95 over the last 1,000 updates are in the status strip; each entry in "Recent moves" shows its own breakdown.
 
-**Measured** (Ottawa residential connection → DraftKings Ontario; in-play MLB because NFL lines don't move on a Friday night). DraftKings' own timestamps let the number be decomposed:
+**Measured** (Toronto residential connection → DraftKings Ontario; in-play MLB because NFL lines don't move on a Friday night). DraftKings' own timestamps let the number be decomposed:
 
 | Leg                                                            | min   | p50            | p95     | n   |
 | -------------------------------------------------------------- | ----- | -------------- | ------- | --- |
@@ -195,8 +187,6 @@ Bounds in the other states:
 
 **Akamai bot management (TLS fingerprinting).** Every API host returns an instant Akamai `Access Denied` to curl, regardless of headers or cookies — it's the ClientHello, not the request. Node's undici passes. To stay boring I also send the headers a browser tab would (`Origin`, `Referer`, `Accept-Language: en-CA`) and replay any cookie the edge sets (`ak_bmsc`, 2 h) via a tiny cookie jar, so the service looks like one long-lived tab. The page loads Akamai's sensor script and could start requiring the `_abck` challenge cookie on the API at any time; that would show up as 403s, flip the feed to DEGRADED with last-known-good data, and the documented escape hatch is a Playwright `request` context (Chromium's real TLS stack, no page rendering) behind the same `fetchImpl` seam.
 
-**Geo.** A Canadian IP is served the Ontario product (`siteExperience: CA-ON-SB`, `siteName: dkcaon`, `wss://sportsbook-ws-ca-on…`). All site keys (`dkcaon`, `dkusoh`, `dkusnj`, `dkuswv`) returned the identical NFL payload tonight, but this deployment mirrors **Ontario** on purpose, since that's the book Betstamp's Toronto users see. Reviewers' own location is irrelevant — only the server talks to DraftKings.
-
 **Auth, cookies, tokens.** None required: no login, `jwt: ""` is accepted on the socket, the REST call works with no cookie. So nothing expires. If DraftKings _starts_ requiring one, it surfaces as HTTP 401/403 or socket close code `4000` (their "bad query params — terminal" code), the feed degrades visibly instead of crashing, and the fix is a token requester behind the adapter's existing seams.
 
 **msgpack.** DraftKings' site opens the socket with `format=msgpack`. The same library has a JSON path, and the server honours `format=json`, so no binary decoding was needed. If they ever drop JSON, the app automatically falls back to POLLING and stays correct; adding `@msgpack/msgpack` decoding is a bounded follow-up.
@@ -204,9 +194,6 @@ Bounds in the other states:
 **Small sharp edges.** `displayOdds.american` uses **U+2212** (Unicode minus), not `-`; prices are taken from the numeric `trueOdds` instead. Kickoff times have 7 fractional digits. Event names are `AWAY @ HOME`. The socket server closes idle connections (their client uses a 5 s inactivity code `4002`), so we ping every 15 s and force a reconnect after 45 s of silence.
 
 **Rate limits.** None encountered. A bounded probe (20 requests at 1/s, then 20 at 4/s) returned 40 × HTTP 200 with no `Retry-After`. What it did show is the 1-second edge cache: at 4/s the `Date` header repeated and responses came back in ~19 ms — the same cached copy — while at 1/s every response was a fresh origin hit. That cache, not a quota, is the effective limit on REST freshness, and it is why polling faster than 1/s buys nothing. I deliberately did not push further (sustained 10+/s, parallel sockets): the socket makes it pointless for the product, and Akamai keeps IP reputation.
-
-**Cloud IPs.** Akamai scores datacenter egress differently from residential. `npm run probe` exists precisely to answer "is this host allowed?" in 30 s after deploying; `GET /api/diagnostics` shows the same from the running service.
-
 ---
 
 ## Shape of the data
@@ -233,17 +220,6 @@ Bounds in the other states:
 { "remove": { "selections": [ "0HC86275332N750_1" ] } }
 ```
 
-How the store copes (`src/server/store.ts`):
-
-1. Removals first, then adds, then changes, so a remove+add of the same id in one frame nets out.
-2. A selection is located by its own id → else by `replacedSelectionId` (re-keying the index) → else by `marketId + outcomeType` → else it's **unresolved**: counted, and a snapshot resync is scheduled (debounced 5 s).
-3. Only real value changes produce a `ChangeSet` entry and a `prev`; re-applying a frame is a no-op (idempotent), so replay after a reconnect is safe.
-4. Market suspension is DraftKings' `isSuspended` flag, kept separate from "no sides priced"; the UI dims suspended prices and tags them `SUSP`.
-5. Finished games hide immediately and are dropped by the next snapshot.
-6. **Snapshot/delta ordering.** A resync snapshot is requested at T and applied ~200 ms later; anything the socket delivered in between is newer than the snapshot. The store records when the socket last wrote each game/market/side (our clock) and a snapshot older than that write is not allowed to overwrite it — otherwise a resync during a busy live game would flash a bogus "change" back to an older price and leave it there. Skips are counted (`staleSnapshotSkips`) and shown in the panel.
-
-Everything above is exercised in `test/store.test.ts` and `test/normalize.test.ts` against the captured fixtures.
-
 ---
 
 ## Failure modes
@@ -260,8 +236,6 @@ Everything above is exercised in `test/store.test.ts` and `test/normalize.test.t
 | DraftKings changes the contract entirely            | Validation fails → `degraded` with last-known-good                                                        | Red DEGRADED banner with the time of the last good data  |
 | No contact for 90 s                                 | `meta.stale = true`                                                                                       | Red STALE banner                                         |
 | Browser loses the stream                            | `EventSource` auto-reconnect + `Last-Event-ID` replay (200-delta buffer), 35 s client watchdog            | "RECONNECTING to this server" pill                       |
-| A crowd hammers Refresh                             | Global rate limit: one upstream snapshot per 5 s (HTTP 429 + `Retry-After` otherwise)                     | "Please wait 4 s"                                        |
-| Render free instance sleeps                         | Cold start ≈ 30 s, bootstrap < 1 s                                                                        | A pause on first load if the keep-alive pinger lapsed    |
 
 ---
 
@@ -301,7 +275,7 @@ Everything above is exercised in `test/store.test.ts` and `test/normalize.test.t
 ## Testing
 
 ```bash
-npm test          # vitest, 54 tests, < 1 s
+npm test          # vitest, 68 tests, < 2 s
 npm run chaos     # end-to-end resilience run against a mock DraftKings (~45 s, offline)
 npm run lint      # eslint (typescript-eslint strict-ish)
 npm run typecheck # server (NodeNext) + web (bundler) projects
@@ -313,6 +287,8 @@ npm run typecheck # server (NodeNext) + web (bundler) projects
 - `test/ws.test.ts` — the socket client with a fake socket: subscribe payload, NTP-style skew from the ack, malformed frames, exponential backoff and reset, silence watchdog, clean stop.
 - `test/sse.test.ts` — snapshot on connect, versioned deltas, heartbeats, `Last-Event-ID` replay vs. fresh snapshot, dropping dead clients.
 - `test/latency.test.ts` — skew correction math, continuous skew tracking across a clock step, and percentiles.
+- `test/api.test.ts` — the HTTP routes in-process: snapshot, health, time, Refresh rate limit (429 + `Retry-After`), SSE stream opening with a snapshot, diagnostics, and a handler error becoming a 500 instead of a crash.
+- `test/ui.test.tsx` — the React components rendered to HTML: every side/line/price in both odds formats, the dash for an unoffered market, the `SUSP` state, previous price + flash, day grouping and live score/period; the state pill for every feed condition; the client reducer applying deltas, flashes, moves, browser-leg latency and heartbeats.
 
 ### Chaos run (end-to-end, no DraftKings involved)
 
@@ -330,8 +306,6 @@ npm run typecheck # server (NodeNext) + web (bundler) projects
 6  socket back (reconnect backoff is capped at 15 s) state=live         stale=false games=75  DET ML=-350
 ```
 
-The table never blanks, the last known price survives every failure, the state is always named, and recovery is automatic.
-
 Nothing in CI touches DraftKings. `npm run probe` is the opt-in live contract check.
 
 ---
@@ -348,7 +322,7 @@ The repo carries a **Render Blueprint** (`render.yaml`, free web service, Ohio r
 
 ## Adding a second sportsbook or league
 
-**Second league (≈1 hour).** DraftKings scopes everything by `leagueId` + main-lines `subcategoryId` (NFL `88808/4518`, MLB `84240/4519` — both verified). `DK_LEAGUES` in `draftkings/adapter.ts` becomes a registry, the socket client multiplexes one `subscribe` per league on the same connection (JSON-RPC ids are per subscription), the store keys games by `(book, league, id)`, the SSE stream gains a `league` field, and the UI gets tabs. Nothing in the store or the UI is NFL-specific today.
+**Second league** DraftKings scopes everything by `leagueId` + main-lines `subcategoryId` (NFL `88808/4518`, MLB `84240/4519` — both verified). `DK_LEAGUES` in `draftkings/adapter.ts` becomes a registry, the socket client multiplexes one `subscribe` per league on the same connection (JSON-RPC ids are per subscription), the store keys games by `(book, league, id)`, the SSE stream gains a `league` field, and the UI gets tabs. Nothing in the store or the UI is NFL-specific today.
 
 **Second sportsbook.** Implement `BookAdapter` (`src/server/book.ts`):
 
@@ -362,26 +336,6 @@ interface BookAdapter {
 A `FeedManager` per adapter, all feeding the same hub. A polling-only book is already supported (that's the POLLING state). The hard part isn't the transport — it's **entity resolution** across books: "LA Chargers" vs "Los Angeles Chargers", a total of 49.5 vs "O/U 49.5", kickoff times that differ by a minute. That wants a canonical `Team`/`Event` registry keyed by league + normalized names + kickoff window, with per-book alias tables — and it's where tooling earns its keep.
 
 ## Where AI and tooling would help this scale
-
-- **Drafting adapters.** Tonight's reconnaissance — grepping a 1.6 MB bundle for `wss://`, reading the subscribe builder, replaying frames — is exactly the kind of work an LLM does well from a HAR capture plus this repo's `BookAdapter` contract and fixture tests. Humans review; fixtures decide.
-- **Schema-drift watch.** A nightly job runs the opt-in contract probe; on failure an agent diffs old vs new payloads, explains the change, and opens a PR with updated `schema.ts` + fixtures. The lenient schemas here mean drift degrades gracefully in the meantime instead of crashing.
-- **Entity resolution.** LLM-generated alias tables with confidence scores, verified against kickoff times; embeddings for fuzzy matching across dozens of books.
-- **Ops.** Anomaly detection on the latency/drift/unresolved counters this service already exposes at `/api/metrics`; automatic incident summaries.
-- Guardrail: AI proposes, tests and humans dispose. Nothing generated ships without the fixture suite passing.
-
----
-
-## Known unknowns
-
-Verified on MLB in-play, not yet on an NFL Sunday: the `period` strings DraftKings uses for NFL, whether main-line market ids change at kickoff, the status string for finished games (unknown strings show as upcoming until the next snapshot drops them, ≤ 60 s), and the orientation of `firstTeamScore`/`secondTeamScore` (mapped away/home from DraftKings' listing order). Multi-hour socket sessions and Akamai's treatment of Render's datacenter IP are answered by the first day of deployment; every close code and reconnect is logged and counted.
-
-## Limits and ethics
-
-- Unofficial, read-only use of endpoints DraftKings serves to its own web client. One socket and one snapshot per minute per league — the same traffic pattern as a single open browser tab. Nothing is bypassed: no geo checks (odds are public everywhere; only betting is geo-fenced), no bot challenge solved, no credentials.
-- The service mirrors odds; it does not place bets, and it is not affiliated with DraftKings or Betstamp.
-- In-memory only. A restart re-bootstraps in about a second; `prev` prices and latency samples start fresh.
-
----
 
 ## Project layout
 
