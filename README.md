@@ -283,6 +283,7 @@ npm test          # vitest, 68 tests, < 2 s
 npm run chaos     # end-to-end resilience run against a mock DraftKings (~45 s, offline)
 npm run latency   # 45 s on the real socket: inside-DraftKings vs network legs, with the skew self-check
 npm run frames    # print DraftKings' raw socket frames as JSON for 30 s (the browser shows them as binary msgpack)
+npm run demo      # guided 3-act interview demo: why Node (curl 403 vs Node 200), how the feed is derived, live latency
 npm run lint      # eslint (typescript-eslint strict-ish)
 npm run typecheck # server (NodeNext) + web (bundler) projects
 ```
