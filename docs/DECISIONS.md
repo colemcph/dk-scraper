@@ -46,7 +46,7 @@ Short, dated records of the choices that shaped this project and the evidence be
 
 **Decision:** report `createdTime → server` and `server → browser` separately, each corrected by an NTP-style offset (subscribe ack for DraftKings; `/api/time` for the browser), and show p50/p95 plus a per-move breakdown.
 
-**Why:** my laptop's clock was 1.85 s behind DraftKings'. Without correction the numbers would be negative or meaningless. Being explicit about the method is more defensible than a single "fast" claim.
+**Why:** my development PC's clock was 1.85 s behind DraftKings'. Without correction the numbers would be negative or meaningless. Being explicit about the method is more defensible than a single "fast" claim.
 
 ## 2026-09-12 — Store semantics: idempotent deltas, indices, resync on unknown ids
 
@@ -68,7 +68,7 @@ Short, dated records of the choices that shaped this project and the evidence be
 
 ## 2026-09-13 — Socket writes beat older snapshots; skew is tracked continuously
 
-**Problem found in review:** a periodic resync is fetched at T and applied ~200 ms later; a socket delta in that window was being overwritten by the older snapshot (bogus flash, stale value until the next move). Separately, the clock-skew estimate was taken once per subscribe; the dev laptop's clock stepped 2 s between two runs, which would have corrupted displayed latency until the next reconnect.
+**Problem found in review:** a periodic resync is fetched at T and applied ~200 ms later; a socket delta in that window was being overwritten by the older snapshot (bogus flash, stale value until the next move). Separately, the clock-skew estimate was taken once per subscribe; the development PC's clock stepped 2 s between two runs, which would have corrupted displayed latency until the next reconnect.
 
 **Decision:** the store records when the socket last wrote each position and refuses older snapshot values for it (counted as `staleSnapshotSkips`). The latency tracker keeps the subscribe-ack estimate as an anchor and refines skew from every frame's publish timestamp over a 10-minute window, exposing a self-check (negative network-leg samples) on the page.
 

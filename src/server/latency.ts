@@ -10,7 +10,7 @@ import type { LatencyPhase, LatencyStats, PhaseLatency, UpdateLatency } from '..
  *  2. Tracked: every frame gives `d = ourReceipt − theirPublish = −skew + oneWay + queueing`.
  *     Over a window, min(d) ≈ −skew + oneWayMin, and oneWayMin ≈ RTT/2, so
  *     skew ≈ RTT/2 − min(d). This keeps working if the host clock steps mid-session (which
- *     happened on the dev laptop) and is what the UI reports once enough frames have arrived.
+ *     happened on the development PC) and is what the UI reports once enough frames have arrived.
  *
  * The self-check: after correction, the network leg (publish → receipt) must be small and never
  * negative. The count of negative samples is exposed so the page can prove its own numbers.
