@@ -15,6 +15,7 @@
  *   5. DK snapshot API recovers with a moved line -> POLLING, change applied from the snapshot
  *      FanDuel moves a price behind its cache  -> picked up by the next poll (200 after 304s)
  *      FanDuel API returns 500 / recovers      -> FanDuel DEGRADED then POLLING; DraftKings untouched
+ *      (recovery is not instant: repeated failures back the polling off, capped at 8 s)
  *   6. DK socket comes back                    -> LIVE again (within the 15 s reconnect backoff cap)
  *
  * Nothing here touches draftkings.com or fanduel.ca.
@@ -319,7 +320,8 @@ async function main(): Promise<void> {
     restMode = 'ok';
     currentSel.trueOdds = 1.2857;
     currentSel.displayOdds = { american: '−350', decimal: '1.29' };
-    await sleep(2500);
+    // Long enough for the poll backoff (capped at 8 s after repeated failures) to try again.
+    await sleep(10000);
     await report('5a DK snapshot API back, DET ML now -350');
 
     fdTarget.winRunnerOdds.americanDisplayOdds.americanOdds = 220;
@@ -333,7 +335,7 @@ async function main(): Promise<void> {
     await report('5c FD API returns HTTP 500 (DK untouched)');
 
     fdMode = 'ok';
-    await sleep(3500);
+    await sleep(9000);
     await report('5d FD API back');
 
     startSocket();

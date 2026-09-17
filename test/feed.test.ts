@@ -26,12 +26,17 @@ class FakeAdapter implements BookAdapter {
   /** Poll-transport behaviour: answer the next N fetches with 304 Not Modified, and a cache-aware delay hint. */
   notModifiedNext = 0;
   hintMs: number | undefined;
+  /** When set, failures carry the delay the upstream asked for (an HTTP Retry-After). */
+  retryAfterMs: number | undefined;
 
   async fetchSnapshot(): Promise<SnapshotResult> {
     this.fetches++;
     if (this.failNext > 0) {
       this.failNext--;
-      throw new Error('HTTP 403 Access Denied');
+      if (this.retryAfterMs === undefined) throw new Error('HTTP 403 Access Denied');
+      const err = new Error('HTTP 429 Too Many Requests') as Error & { retryAfterMs: number };
+      err.retryAfterMs = this.retryAfterMs;
+      throw err;
     }
     const hint = this.hintMs !== undefined ? { nextPollInMs: this.hintMs } : {};
     if (this.notModifiedNext > 0) {
@@ -338,6 +343,58 @@ describe('FeedManager', () => {
     h.feed.stop();
   });
 
+  it('backs off after failed polls rather than hammering, and returns to the cache-aware cadence', async () => {
+    const adapter = new FakeAdapter();
+    adapter.withSocket = false;
+    adapter.hintMs = 20_000; // "the CDN copy cannot change for 20 s"
+    const h = setup(adapter);
+    h.feed.start();
+    await flush();
+    expect(adapter.fetches).toBe(1);
+
+    adapter.failNext = 4;
+    await vi.advanceTimersByTimeAsync(20_000); // the hint the bootstrap response carried
+    expect(adapter.fetches).toBe(2); // 1st failure -> base (3 s)
+    expect(h.feed.feedState).toBe('degraded');
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(adapter.fetches).toBe(3); // 2nd failure -> 6 s
+    await vi.advanceTimersByTimeAsync(5_999);
+    expect(adapter.fetches).toBe(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(adapter.fetches).toBe(4); // 3rd failure -> 12 s, capped at 8 s
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(adapter.fetches).toBe(5); // 4th failure -> still 8 s
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(adapter.fetches).toBe(6); // recovered
+    expect(h.feed.feedState).toBe('polling');
+
+    // A success clears the backoff, so the adapter's own hint applies again — not the 8 s ceiling.
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(adapter.fetches).toBe(6);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(adapter.fetches).toBe(7);
+    h.feed.stop();
+  });
+
+  it('waits at least as long as an upstream Retry-After before polling again', async () => {
+    const adapter = new FakeAdapter();
+    adapter.withSocket = false;
+    const h = setup(adapter);
+    h.feed.start();
+    await flush();
+
+    adapter.failNext = 1;
+    adapter.retryAfterMs = 45_000; // longer than any backoff we would have picked
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(adapter.fetches).toBe(2);
+    expect(h.feed.meta().lastError?.message).toContain('429');
+    await vi.advanceTimersByTimeAsync(44_999);
+    expect(adapter.fetches).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(adapter.fetches).toBe(3);
+    h.feed.stop();
+  });
+
   it('keeps polling through an outage and reports a poll-only book as degraded, not reconnecting', async () => {
     const adapter = new FakeAdapter();
     adapter.withSocket = false;
@@ -345,12 +402,13 @@ describe('FeedManager', () => {
     h.feed.start();
     await flush();
     adapter.failNext = 2;
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(3_000); // 1st failure
     expect(h.feed.feedState).toBe('degraded');
     expect(h.feed.snapshot().games).toHaveLength(1); // last-known-good still served
+    await vi.advanceTimersByTimeAsync(3_000); // 2nd failure -> next attempt backed off to 6 s
+    expect(h.feed.meta().counters.restFailures).toBe(2);
     await vi.advanceTimersByTimeAsync(6_000);
     expect(h.feed.feedState).toBe('polling');
-    expect(h.feed.meta().counters.restFailures).toBe(2);
     h.feed.stop();
   });
 });

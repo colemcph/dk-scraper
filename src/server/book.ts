@@ -120,3 +120,13 @@ export interface BookAdapter {
   /** Poll transports: cache/freshness statistics for the UI. */
   pollStats?(): PollStats;
 }
+
+/**
+ * Part of the adapter contract: a rejected `fetchSnapshot` may carry the delay the book itself
+ * asked for (an HTTP `Retry-After`, as `FdHttpError` does), and the feed waits at least that long
+ * before trying again. Anything else — a plain Error, a timeout — simply has no opinion.
+ */
+export function retryAfterOf(err: unknown): number | null {
+  const value = (err as { retryAfterMs?: unknown } | null | undefined)?.retryAfterMs;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}

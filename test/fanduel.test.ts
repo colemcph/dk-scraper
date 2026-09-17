@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { retryAfterOf } from '../src/server/book.js';
 import { FanDuelAdapter, nextPollDelayMs } from '../src/server/fanduel/adapter.js';
 import { normalizeFanDuelPage, teamsOf, toOdds } from '../src/server/fanduel/normalize.js';
 import { FdHttpError, FdRestClient } from '../src/server/fanduel/rest.js';
@@ -210,6 +211,10 @@ describe('FdRestClient', () => {
     const err = await client.fetchPage('nfl').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(FdHttpError);
     expect(err as FdHttpError).toMatchObject({ status: 429, retryAfterMs: 7_000 });
+    // ...and that is the delay the feed reads off it (the adapter contract in book.ts).
+    expect(retryAfterOf(err)).toBe(7_000);
+    expect(retryAfterOf(new Error('boom'))).toBeNull();
+    expect(retryAfterOf(undefined)).toBeNull();
     await expect(client.fetchPage('nfl')).rejects.toThrow(/non-JSON/);
   });
 });

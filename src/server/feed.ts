@@ -8,13 +8,14 @@ import {
   type OddsSnapshot,
   type PollStats,
 } from '../shared/types.js';
-import type {
-  BookAdapter,
-  LeagueRef,
-  NormalizedDelta,
-  SnapshotResult,
-  SocketState,
-  Subscription,
+import {
+  retryAfterOf,
+  type BookAdapter,
+  type LeagueRef,
+  type NormalizedDelta,
+  type SnapshotResult,
+  type SocketState,
+  type Subscription,
 } from './book.js';
 import { errorMessage, type Logger } from './logger.js';
 import { LatencyTracker } from './latency.js';
@@ -25,6 +26,8 @@ export interface FeedConfig {
   /** Base poll cadence; a poll-only adapter's cache-aware hint can stretch it up to pollMaxIntervalMs. */
   pollIntervalMs: number;
   pollMaxIntervalMs?: number;
+  /** Ceiling for the backoff applied to polling after a failed fetch. */
+  pollFailureMaxMs?: number;
   wsFallbackAfterMs: number;
   staleAfterMs: number;
   refreshMinIntervalMs: number;
@@ -103,8 +106,9 @@ export class FeedManager {
   private stopped = false;
   private bootstrapAttempt = 0;
   private resyncInFlight: Promise<ChangeSet | null> | null = null;
-  /** Poll transports: the adapter's cache-aware delay for the next poll. */
+  /** Delay before the next poll: the adapter's cache-aware hint, or a backoff after a failure. */
   private pollHintMs: number | undefined;
+  private pollFailures = 0;
   private pollingActive = false;
   private timers: {
     bootstrap?: NodeJS.Timeout;
@@ -271,17 +275,41 @@ export class FeedManager {
     } catch (err) {
       this.counters.restFailures++;
       this.recordError(err);
-      this.log.warn('snapshot fetch failed', { reason, error: errorMessage(err) });
+      this.pollFailures++;
+      this.pollHintMs = this.failureDelayMs(err);
+      this.log.warn('snapshot fetch failed', {
+        reason,
+        error: errorMessage(err),
+        consecutive: this.pollFailures,
+        nextPollInMs: this.pollHintMs,
+      });
       if (this.state === 'polling' || this.state === 'reconnecting') this.setState('degraded');
       return null;
     }
+  }
+
+  /**
+   * How long to wait after a failed fetch. Without this, a book that is erroring would be polled
+   * at the base cadence for the whole outage (once a second, for FanDuel) — and, worse, a poll
+   * adapter's last cache-aware hint ("sleep 29 s, the CDN copy can't change yet") would otherwise
+   * still apply and delay recovery. So: base × 2^(failures−1), capped, and never sooner than an
+   * upstream `Retry-After` asked for. The cap keeps recovery well inside the 90 s stale window.
+   */
+  private failureDelayMs(err: unknown): number {
+    const base = this.opts.config.pollIntervalMs;
+    const cap = this.opts.config.pollFailureMaxMs ?? 8_000;
+    const backoff = Math.min(cap, base * 2 ** Math.min(10, this.pollFailures - 1));
+    return Math.max(backoff, retryAfterOf(err) ?? 0);
   }
 
   private onSnapshot(res: SnapshotResult, reason: ResyncReason): ChangeSet {
     const now = this.now();
     this.counters.invalidEntities += res.invalidEntities;
     if (res.subscriptionSpec !== undefined) this.subscriptionSpec = res.subscriptionSpec;
-    if (res.nextPollInMs !== undefined) this.pollHintMs = res.nextPollInMs;
+    // The hint describes *this* response's cache state, so it is replaced (not merged) every time,
+    // and a success clears any failure backoff.
+    this.pollHintMs = res.nextPollInMs;
+    this.pollFailures = 0;
     this.lastContactAt = now;
     this.lastSnapshotAt = now;
 

@@ -115,3 +115,21 @@ Short, dated records of the choices that shaped this project and the evidence be
 **Decision:** each book gets its own adapter, store and `FeedManager`; a single `SseHub` multiplexes them (`snapshot` per book on connect, every event carries `meta.book`) and stamps events with its own sequence rather than the per-book store version.
 
 **Why:** the state machines are independent — a FanDuel outage must not touch DraftKings' LIVE state (the chaos run shows exactly that) — and the browser wants one connection. Store versions collide across books, so `Last-Event-ID` replay needs a sequence that spans them. `/api/odds` became a bundle keyed by book; `/api/odds/:book` keeps the single-book shape.
+
+## 2026-09-17 — A failed poll backs off; a cache hint never outlives the response it came from
+
+**Problem found in review:** the cache-aware hint ("sleep 29 s, the CDN copy cannot change yet") was kept when a fetch _failed_, so a FanDuel 500 would be retried up to 29 s later — the slowest possible recovery, from a value that no longer described anything. The obvious fix (fall back to the base interval) has the opposite flaw: FanDuel's base is 1 s, so an outage would mean 60 requests a minute at an endpoint that is already unhappy.
+
+**Decision:** the hint is replaced by every response (it describes that response's cache state and nothing else), and a failure sets an explicit backoff instead: `base × 2^(failures−1)`, capped at 8 s, and never sooner than an upstream `Retry-After` — which the adapter contract now carries on the thrown error (`retryAfterOf` in `book.ts`, set by `FdHttpError`). A success clears it.
+
+**Why 8 s:** recovery has to be noticed well inside the 90 s stale threshold, while bounding outage traffic to ~8 requests a minute per book. It also keeps the chaos run honest: recovery there now takes a few seconds rather than being instant, which is what the real thing does.
+
+## 2026-09-17 — The cache bypass stays off: measured, the origin has nothing the edge doesn't
+
+**Open question from the polling decision:** the only way under the 30 s bound is to defeat the CDN, and I had left `FD_CACHE_BYPASS` in as an opt-in without knowing whether it actually buys fresher data.
+
+**Measurement:** eight edge/origin pairs taken back to back, 15 s apart, on a settled pre-game board. The origin read (`X-Cache: Miss`, ~400 ms) returned the _same ETag and the same prices_ as the edge copy (~45 ms) in all eight. Separately, across ~80 requests the `Age` header never exceeded `max-age` — it climbed to 30 and reset — so CloudFront is not serving inside its `stale-while-revalidate=60` window, which would otherwise widen the stated bound.
+
+**Decision:** keep the bypass off by default and say so with the evidence. It costs FanDuel an origin request and this service ~10× the latency per poll, for data that was identical every time it was checked. The flag stays for the demo, and the probe re-runs the comparison on demand — the honest caveat being that a settled board is the easy case; the interesting repeat is during in-play.
+
+**Aside worth keeping:** in the same window DraftKings pushed 12 price changes while FanDuel's page did not change once (one ETag, 32 consecutive 304s, ~8 minutes). The two books are not moving at the same tempo, which is exactly what the comparison view is for — and a reminder that a "DraftKings led" reading is often DraftKings simply repricing more often, not a race being won.
