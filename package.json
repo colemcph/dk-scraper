@@ -22,7 +22,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "probe": "tsx scripts/probe.ts",
-    "chaos": "tsx scripts/chaos.ts"
+    "chaos": "tsx scripts/chaos.ts",
+    "latency": "tsx scripts/latency.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

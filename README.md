@@ -281,6 +281,7 @@ Bounds in the other states:
 ```bash
 npm test          # vitest, 68 tests, < 2 s
 npm run chaos     # end-to-end resilience run against a mock DraftKings (~45 s, offline)
+npm run latency   # 45 s on the real socket: inside-DraftKings vs network legs, with the skew self-check
 npm run lint      # eslint (typescript-eslint strict-ish)
 npm run typecheck # server (NodeNext) + web (bundler) projects
 ```
