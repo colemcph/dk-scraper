@@ -15,6 +15,23 @@ export interface AppConfig {
     /** Override the full socket URL (chaos tests). Default: wss://sportsbook-ws-{region}.draftkings.com/websocket?... */
     wsUrl?: string;
   };
+  fd: {
+    enabled: boolean;
+    /** FanDuel region/state code: on = Ontario. Their US site (`.com`) refuses Canadian IPs with a 400. */
+    region: string;
+    /** FanDuel page id for the league: nfl, nba, mlb, nhl, ... */
+    pageId: string;
+    leagueName: string;
+    /** The public `_ak` key FanDuel's own bundle sends. */
+    apiKey: string;
+    timezone: string;
+    /** Fast poll cadence (ms). The adapter sleeps through the CDN's max-age and polls at this rate around its expiry. */
+    pollIntervalMs: number;
+    /** Defeat the CDN cache with a unique query string (every poll hits FanDuel's origin). Off by default. */
+    bypassCache: boolean;
+    /** Override the API origin (chaos tests). Default: https://sbapi.{region}.sportsbook.fanduel.ca/api */
+    restBaseUrl?: string;
+  };
   feed: {
     resyncIntervalMs: number;
     pollIntervalMs: number;
@@ -40,6 +57,14 @@ function str(name: string, fallback: string): string {
   return raw === undefined || raw === '' ? fallback : raw;
 }
 
+function bool(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(raw.toLowerCase())) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw.toLowerCase())) return false;
+  throw new Error(`Invalid ${name}: ${raw}`);
+}
+
 export function loadConfig(): AppConfig {
   const logLevel = str('LOG_LEVEL', 'info');
   if (!['debug', 'info', 'warn', 'error'].includes(logLevel)) {
@@ -56,6 +81,17 @@ export function loadConfig(): AppConfig {
       subcategoryId: str('DK_SUBCATEGORY_ID', '4518'),
       ...(process.env.DK_REST_BASE_URL ? { restBaseUrl: process.env.DK_REST_BASE_URL } : {}),
       ...(process.env.DK_WS_URL ? { wsUrl: process.env.DK_WS_URL } : {}),
+    },
+    fd: {
+      enabled: bool('FD_ENABLED', true),
+      region: str('FD_REGION', 'on'),
+      pageId: str('FD_PAGE_ID', 'nfl'),
+      leagueName: str('FD_LEAGUE_NAME', ''),
+      apiKey: str('FD_API_KEY', 'FhMFpcPWXMeyZxOx'),
+      timezone: str('FD_TIMEZONE', 'America/Toronto'),
+      pollIntervalMs: int('FD_POLL_INTERVAL_MS', 1_000),
+      bypassCache: bool('FD_CACHE_BYPASS', false),
+      ...(process.env.FD_REST_BASE_URL ? { restBaseUrl: process.env.FD_REST_BASE_URL } : {}),
     },
     feed: {
       resyncIntervalMs: int('RESYNC_INTERVAL_MS', 60_000),

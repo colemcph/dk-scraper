@@ -7,6 +7,7 @@ import type {
   SideKey,
   Team,
 } from '../../shared/types.js';
+import { americanFromDecimal, decimalFromAmerican } from '../../shared/odds.js';
 import type {
   GamePatch,
   GameUpsert,
@@ -41,15 +42,7 @@ export function parseAmerican(raw: string | undefined): number | undefined {
   return Number.isFinite(n) && n !== 0 ? n : undefined;
 }
 
-export function americanFromDecimal(decimal: number): number {
-  if (decimal >= 2) return Math.round((decimal - 1) * 100);
-  return -Math.round(100 / (decimal - 1));
-}
-
-function decimalFromAmerican(american: number): number {
-  const d = american > 0 ? 1 + american / 100 : 1 + 100 / Math.abs(american);
-  return Math.round(d * 1000) / 1000;
-}
+export { americanFromDecimal };
 
 export function toOdds(sel: DkSelectionT): Odds | undefined {
   const decimalRaw =
@@ -294,7 +287,12 @@ export function normalizeSnapshot(
       continue;
     }
     // Belt and braces: the endpoint is already scoped to main lines, but never trust that.
-    if (m.subcategoryId !== undefined && String(m.subcategoryId) !== league.subcategoryId) continue;
+    if (
+      league.subcategoryId !== undefined &&
+      m.subcategoryId !== undefined &&
+      String(m.subcategoryId) !== league.subcategoryId
+    )
+      continue;
     if (m.main === false) continue;
     if (game.markets[type]) continue; // keep the first main market of each type
     game.markets[type] = {
@@ -409,7 +407,12 @@ export function normalizeUpdateFrame(
       }
       continue;
     }
-    if (m.subcategoryId !== undefined && String(m.subcategoryId) !== league.subcategoryId) continue;
+    if (
+      league.subcategoryId !== undefined &&
+      m.subcategoryId !== undefined &&
+      String(m.subcategoryId) !== league.subcategoryId
+    )
+      continue;
     if (m.main === false) continue;
     delta.markets.upsert.push({
       sourceMarketId: m.id,
@@ -447,9 +450,10 @@ export function normalizeUpdateFrame(
 }
 
 export function defaultSubscriptionSpec(league: LeagueRef): DkSubscriptionPartialT {
+  const subcategory = league.subcategoryId ?? '';
   return {
     entity: 'events',
-    query: `$filter=leagueId eq '${league.id}' and clientMetadata/Subcategories/any(s: s/Id eq '${league.subcategoryId}')&$orderBy=startEventDate asc`,
-    includeMarkets: `$filter=tags/all(t: t ne 'SportcastBetBuilder') and clientMetadata/subCategoryId eq '${league.subcategoryId}'`,
+    query: `$filter=leagueId eq '${league.id}' and clientMetadata/Subcategories/any(s: s/Id eq '${subcategory}')&$orderBy=startEventDate asc`,
+    includeMarkets: `$filter=tags/all(t: t ne 'SportcastBetBuilder') and clientMetadata/subCategoryId eq '${subcategory}'`,
   };
 }

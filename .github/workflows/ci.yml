@@ -20,7 +20,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # End-to-end resilience walk-through against a mock DraftKings (offline, ~45 s)
-      - run: npm run chaos
-      # End-to-end resilience walk-through against a mock DraftKings (offline, ~45 s)
+      # End-to-end resilience walk-through against a mock DraftKings + mock FanDuel (offline, ~60 s)
       - run: npm run chaos

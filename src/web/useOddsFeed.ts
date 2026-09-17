@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type {
+  BookId,
   DeltaEvent,
   FeedMeta,
   Game,
   HeartbeatEvent,
+  MarketType,
   OddsChange,
   OddsSnapshot,
+  SideKey,
 } from '../shared/types.js';
+import { BOOK_SHORT } from './format.js';
 import { estimateClockOffset } from './timeSync.js';
 
 export type Connection = 'connecting' | 'open' | 'reconnecting';
@@ -18,6 +22,7 @@ export interface Flash {
 }
 
 export interface RecentMove extends OddsChange {
+  book: BookId;
   gameLabel: string;
   sideLabel: string;
   /** browser receipt, browser clock */
@@ -26,13 +31,19 @@ export interface RecentMove extends OddsChange {
   serverToBrowserMs: number | null;
 }
 
-export interface FeedClientState {
+/** One book's slice of the stream: its games, its feed meta, its store version. */
+export interface BookState {
   games: Record<string, Game>;
   meta: FeedMeta | null;
-  connection: Connection;
   version: number;
+}
+
+export interface FeedClientState {
+  books: Partial<Record<BookId, BookState>>;
+  connection: Connection;
   lastMessageAt: number | null;
   lastHeartbeat: HeartbeatEvent | null;
+  /** Newest first, every book. */
   moves: RecentMove[];
   flashes: Record<string, Flash>;
   /** browser - server, ms */
@@ -51,18 +62,19 @@ export type Action =
   | { type: 'prune'; at: number };
 
 export const FLASH_MS = 1_800;
-const MAX_MOVES = 40;
+/** Enough history for the cross-book "who moved first" pairing; the list itself shows fewer. */
+const MAX_MOVES = 200;
 const MAX_LEG_SAMPLES = 200;
 
-export function cellKey(gameId: string, market: string, side: string): string {
-  return `${gameId}:${market}:${side}`;
+export function cellKey(book: BookId, gameId: string, market: MarketType, side: SideKey): string {
+  return `${book}:${gameId}:${market}:${side}`;
 }
 
+const emptyBook = (): BookState => ({ games: {}, meta: null, version: 0 });
+
 export const initialState: FeedClientState = {
-  games: {},
-  meta: null,
+  books: {},
   connection: 'connecting',
-  version: 0,
   lastMessageAt: null,
   lastHeartbeat: null,
   moves: [],
@@ -81,20 +93,24 @@ function flashKind(change: OddsChange): FlashKind {
 export function reducer(state: FeedClientState, action: Action): FeedClientState {
   switch (action.type) {
     case 'snapshot': {
+      const book = action.snapshot.meta.book;
       const games: Record<string, Game> = {};
       for (const g of action.snapshot.games) games[g.id] = g;
       return {
         ...state,
-        games,
-        meta: action.snapshot.meta,
-        version: action.snapshot.version,
+        books: {
+          ...state.books,
+          [book]: { games, meta: action.snapshot.meta, version: action.snapshot.version },
+        },
         lastMessageAt: action.at,
         connection: 'open',
       };
     }
     case 'delta': {
       const { delta, at, offset } = action;
-      const games = { ...state.games };
+      const book = delta.meta.book;
+      const current = state.books[book] ?? emptyBook();
+      const games = { ...current.games };
       for (const g of delta.games) games[g.id] = g;
       for (const id of delta.removedGameIds) delete games[id];
 
@@ -103,7 +119,7 @@ export function reducer(state: FeedClientState, action: Action): FeedClientState
         offset === null ? null : Math.max(0, Math.round(at - offset - Date.parse(delta.emittedAt)));
       const newMoves: RecentMove[] = [];
       for (const change of delta.changes) {
-        flashes[cellKey(change.gameId, change.market, change.side)] = {
+        flashes[cellKey(book, change.gameId, change.market, change.side)] = {
           kind: flashKind(change),
           at,
         };
@@ -111,6 +127,7 @@ export function reducer(state: FeedClientState, action: Action): FeedClientState
         const side = game?.markets[change.market]?.sides[change.side];
         newMoves.push({
           ...change,
+          book,
           gameLabel: game ? `${game.away.shortName} @ ${game.home.shortName}` : change.gameId,
           sideLabel: side?.label ?? change.side,
           browserReceivedAt: at,
@@ -124,9 +141,7 @@ export function reducer(state: FeedClientState, action: Action): FeedClientState
 
       return {
         ...state,
-        games,
-        meta: delta.meta,
-        version: delta.version,
+        books: { ...state.books, [book]: { games, meta: delta.meta, version: delta.version } },
         lastMessageAt: at,
         flashes,
         moves: [...newMoves.reverse(), ...state.moves].slice(0, MAX_MOVES),
@@ -134,23 +149,38 @@ export function reducer(state: FeedClientState, action: Action): FeedClientState
         connection: 'open',
       };
     }
-    case 'meta':
-      return { ...state, meta: action.meta, lastMessageAt: action.at };
-    case 'heartbeat':
+    case 'meta': {
+      const current = state.books[action.meta.book] ?? emptyBook();
       return {
         ...state,
+        books: { ...state.books, [action.meta.book]: { ...current, meta: action.meta } },
+        lastMessageAt: action.at,
+      };
+    }
+    case 'heartbeat': {
+      const books = { ...state.books };
+      for (const hb of action.heartbeat.books) {
+        const current = books[hb.book];
+        if (!current?.meta) continue;
+        books[hb.book] = {
+          ...current,
+          meta: {
+            ...current.meta,
+            stale: hb.stale,
+            feedState: hb.feedState,
+            serverTime: action.heartbeat.serverTime,
+            lastContactAt: hb.lastContactAt ?? current.meta.lastContactAt,
+          },
+        };
+      }
+      return {
+        ...state,
+        books,
         lastHeartbeat: action.heartbeat,
         lastMessageAt: action.at,
         connection: 'open',
-        meta: state.meta
-          ? {
-              ...state.meta,
-              stale: action.heartbeat.stale,
-              feedState: action.heartbeat.feedState,
-              serverTime: action.heartbeat.serverTime,
-            }
-          : state.meta,
       };
+    }
     case 'connection':
       return state.connection === action.connection
         ? state
@@ -173,6 +203,12 @@ export function reducer(state: FeedClientState, action: Action): FeedClientState
 
 /** How long without any SSE message before we assume the connection is dead and rebuild it. */
 const CLIENT_WATCHDOG_MS = 35_000;
+
+interface RefreshBody {
+  ok?: boolean;
+  retryAfterMs?: number;
+  books?: Partial<Record<BookId, { ok: boolean; changes: number; retryAfterMs?: number }>>;
+}
 
 export function useOddsFeed() {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -259,15 +295,30 @@ export function useOddsFeed() {
   const refresh = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
     try {
       const res = await fetch('/api/refresh', { method: 'POST' });
-      const body = (await res.json()) as { ok?: boolean; changes?: number; retryAfterMs?: number };
+      const body = (await res.json()) as RefreshBody;
       if (res.status === 429) {
         return {
           ok: false,
           message: `Please wait ${Math.ceil((body.retryAfterMs ?? 5000) / 1000)}s`,
         };
       }
-      if (!res.ok || !body.ok) return { ok: false, message: 'DraftKings unreachable' };
-      return { ok: true, message: body.changes ? `${body.changes} change(s)` : 'No changes' };
+      const parts = (
+        Object.entries(body.books ?? {}) as [BookId, NonNullable<RefreshBody['books']>[BookId]][]
+      )
+        .map(([book, r]) => {
+          if (!r) return '';
+          const note = r.ok
+            ? r.changes
+              ? `${r.changes} change(s)`
+              : 'no changes'
+            : r.retryAfterMs !== undefined
+              ? 'wait'
+              : 'unreachable';
+          return `${BOOK_SHORT[book]} ${note}`;
+        })
+        .filter(Boolean);
+      const message = parts.join(' · ') || 'Books unreachable';
+      return { ok: res.ok && body.ok === true, message };
     } catch {
       return { ok: false, message: 'Server unreachable' };
     }

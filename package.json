@@ -2,7 +2,7 @@
   "name": "betstamp-take-home",
   "version": "1.0.0",
   "private": true,
-  "description": "Live DraftKings (Ontario) NFL main-market odds: snapshot API + delta WebSocket -> normalized store -> SSE -> React",
+  "description": "Live DraftKings + FanDuel (Ontario) NFL main-market odds: DraftKings snapshot API + delta WebSocket, FanDuel cache-aware polling -> normalized stores -> SSE -> React, with a cross-book comparison",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -22,6 +22,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "probe": "tsx scripts/probe.ts",
+    "probe:fanduel": "tsx scripts/fanduel-probe.ts",
     "chaos": "tsx scripts/chaos.ts",
     "latency": "tsx scripts/latency.ts",
     "frames": "tsx scripts/frames.ts",

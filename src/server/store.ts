@@ -1,4 +1,5 @@
 import type {
+  BookId,
   Game,
   Market,
   MarketType,
@@ -122,7 +123,10 @@ export class OddsStore {
   private socketSeenAt = new Map<string, number>();
   private versionCounter = 0;
 
-  constructor(private readonly leagueId: string) {}
+  constructor(
+    private readonly leagueId: string,
+    private readonly book: BookId = 'draftkings',
+  ) {}
 
   get version(): number {
     return this.versionCounter;
@@ -346,7 +350,7 @@ export class OddsStore {
       }
       this.games.set(up.id, {
         ...up,
-        book: 'draftkings',
+        book: this.book,
         league: this.leagueId,
         markets: { moneyline: null, spread: null, total: null },
         updatedAt: at,

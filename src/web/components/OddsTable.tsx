@@ -1,10 +1,17 @@
 import { Fragment, useMemo } from 'react';
-import type { Game, MarketType, SideKey } from '../../shared/types.js';
+import {
+  BOOK_LABEL,
+  type BookId,
+  type Game,
+  type MarketType,
+  type SideKey,
+} from '../../shared/types.js';
 import { cellKey, type Flash } from '../useOddsFeed.js';
 import { dayKey, formatDayHeading, formatKickoff, type OddsFormat } from '../format.js';
 import { OddsCell } from './OddsCell.js';
 
 interface Props {
+  book: BookId;
   games: Game[];
   format: OddsFormat;
   flashes: Record<string, Flash>;
@@ -19,7 +26,8 @@ const ROWS: Array<{ team: 'away' | 'home'; ml: SideKey; spread: SideKey; total: 
 
 const MARKETS: MarketType[] = ['moneyline', 'spread', 'total'];
 
-export function OddsTable({ games, format, flashes, serverNow, tzLabel }: Props) {
+/** One book's board: every game, two rows (away/home), the three main markets. */
+export function OddsTable({ book, games, format, flashes, serverNow, tzLabel }: Props) {
   const groups = useMemo(() => {
     const byDay = new Map<string, Game[]>();
     for (const g of games) {
@@ -32,6 +40,7 @@ export function OddsTable({ games, format, flashes, serverNow, tzLabel }: Props)
   }, [games]);
 
   if (games.length === 0) return null;
+  const bookName = BOOK_LABEL[book];
 
   return (
     <div className="table-wrap">
@@ -95,8 +104,9 @@ export function OddsTable({ games, format, flashes, serverNow, tzLabel }: Props)
                             side={m?.sides[sideKey]}
                             suspended={m?.suspended ?? false}
                             offered={m !== null && m !== undefined}
+                            bookName={bookName}
                             format={format}
-                            flash={flashes[cellKey(game.id, market, sideKey)]}
+                            flash={flashes[cellKey(book, game.id, market, sideKey)]}
                             serverNow={serverNow}
                           />
                         );

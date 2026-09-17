@@ -1,6 +1,8 @@
-import type { MarketType, Odds, SideKey } from '../shared/types.js';
+import type { BookId, MarketType, Odds, SideKey } from '../shared/types.js';
 
 export type OddsFormat = 'american' | 'decimal';
+
+export const BOOK_SHORT: Record<BookId, string> = { draftkings: 'DK', fanduel: 'FD' };
 
 export function formatOdds(odds: Odds, format: OddsFormat): string {
   if (format === 'decimal') return odds.decimal.toFixed(2);
@@ -77,6 +79,18 @@ export function formatMs(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return '—';
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(2)} s`;
+}
+
+/** "30 s", "1.5 s" */
+export function formatSeconds(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '—';
+  const s = ms / 1000;
+  return Number.isInteger(s) ? `${s} s` : `${s.toFixed(1)} s`;
+}
+
+/** 0.524 -> "52.4%" */
+export function formatPct(fraction: number): string {
+  return `${(fraction * 100).toFixed(1)}%`;
 }
 
 /** Nearest-rank percentile; null for an empty sample. */

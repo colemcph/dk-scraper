@@ -5,21 +5,24 @@ import type {
   LiveState,
   MarketType,
   Odds,
+  PollStats,
   SideKey,
   Team,
+  Transport,
 } from '../shared/types.js';
 
 /**
- * The seam for adding another sportsbook: implement `BookAdapter` and hand it to the FeedManager.
- * A book with no push feed simply omits `subscribe` and the manager polls `fetchSnapshot`.
+ * The seam for adding another sportsbook: implement `BookAdapter` and hand it to a FeedManager.
+ * A book with no push feed simply omits `subscribe` and the manager polls `fetchSnapshot`
+ * (that is FanDuel: `fanduel/adapter.ts`).
  */
 
 export interface LeagueRef {
-  /** Book-specific league id (DraftKings NFL = "88808") */
+  /** Book-specific league id (DraftKings NFL = "88808"; FanDuel NFL = its page id "nfl") */
   id: string;
   name: string;
-  /** Book-specific "main lines" grouping (DraftKings NFL Game Lines/Game = "4518") */
-  subcategoryId: string;
+  /** DraftKings' "main lines" grouping (NFL Game Lines/Game = "4518"). Books without one omit it. */
+  subcategoryId?: string;
 }
 
 export interface SnapshotResult {
@@ -29,6 +32,10 @@ export interface SnapshotResult {
   /** Book-specific data needed to open a push subscription (DraftKings: subscriptionPartials). */
   subscriptionSpec?: unknown;
   invalidEntities: number;
+  /** True when the upstream answered 304 Not Modified: `games` is empty and the last state stands. */
+  notModified?: boolean;
+  /** Poll transports: how long the adapter suggests waiting before the next fetch (cache-aware). */
+  nextPollInMs?: number;
 }
 
 /** A full game as it arrives on a push feed (e.g. a newly listed event). */
@@ -106,7 +113,10 @@ export interface Subscription {
 export interface BookAdapter {
   readonly book: BookId;
   readonly site: string;
+  readonly transport: Transport;
   fetchSnapshot(league: LeagueRef, signal?: AbortSignal): Promise<SnapshotResult>;
   /** Optional push feed. `spec` is the `subscriptionSpec` from the latest snapshot, if any. */
   subscribe?(league: LeagueRef, spec: unknown, handlers: SubscriptionHandlers): Subscription;
+  /** Poll transports: cache/freshness statistics for the UI. */
+  pollStats?(): PollStats;
 }

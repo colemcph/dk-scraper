@@ -1,10 +1,17 @@
 /**
  * The clean, book-agnostic shape everything downstream consumes.
- * DraftKings' payloads are mapped into this in `books/draftkings/normalize.ts`;
- * the store, the SSE stream and the React UI never see raw DraftKings entities.
+ * DraftKings' payloads are mapped into this in `server/draftkings/normalize.ts`, FanDuel's in
+ * `server/fanduel/normalize.ts`; the store, the SSE stream and the React UI never see raw
+ * sportsbook entities.
  */
 
-export type BookId = 'draftkings';
+export type BookId = 'draftkings' | 'fanduel';
+export const BOOK_IDS: readonly BookId[] = ['draftkings', 'fanduel'];
+export const BOOK_LABEL: Record<BookId, string> = { draftkings: 'DraftKings', fanduel: 'FanDuel' };
+
+/** How a book delivers changes: DraftKings pushes deltas on a socket; FanDuel has no public push feed. */
+export type Transport = 'push' | 'poll';
+
 export type MarketType = 'moneyline' | 'spread' | 'total';
 export type SideKey = 'home' | 'away' | 'over' | 'under';
 export type GameStatus = 'upcoming' | 'live' | 'finished';
@@ -41,7 +48,7 @@ export interface Side {
 export interface Market {
   type: MarketType;
   sides: Partial<Record<SideKey, Side>>;
-  /** DraftKings' own isSuspended flag (set during live plays); sides may still be present. */
+  /** The book's own suspended flag (set during live plays); sides may still be present. */
   suspended: boolean;
   updatedAt: string;
   sourceMarketId: string;
@@ -74,7 +81,7 @@ export interface Game {
   home: Team;
   away: Team;
   live?: LiveState;
-  /** null = DraftKings is not offering that market right now */
+  /** null = the book is not offering that market right now */
   markets: Record<MarketType, Market | null>;
   updatedAt: string;
 }
@@ -86,9 +93,9 @@ export type FeedState =
   | 'live'
   /** socket dropped; reconnecting with backoff, still serving last-known-good */
   | 'reconnecting'
-  /** socket unavailable for too long; polling the snapshot API instead */
+  /** polling the snapshot API: the normal state for a poll-only book, the fallback for a push book */
   | 'polling'
-  /** DraftKings unreachable; serving last-known-good (if any) and retrying */
+  /** the book is unreachable; serving last-known-good (if any) and retrying */
   | 'degraded';
 
 export interface LatencyStats {
@@ -128,10 +135,41 @@ export interface PhaseLatency {
   pipelineP50Ms: number | null;
 }
 
+/**
+ * Freshness of a polled source. A CDN in front of the book's API bounds how old the copy we
+ * receive can be; these fields make that bound visible instead of pretending a poll is "live".
+ */
+export interface PollStats {
+  /** Base poll cadence in use (ms). */
+  intervalMs: number;
+  /** The delay the adapter asked for before the next poll after reading the cache headers (ms). */
+  suggestedIntervalMs: number | null;
+  /** True when the adapter is defeating the upstream CDN cache (opt-in; costs the book an origin hit per poll). */
+  bypassCache: boolean;
+  /** request -> response, ms */
+  p50Ms: number | null;
+  lastMs: number | null;
+  /** `Cache-Control: max-age` the upstream sends: the longest a copy can sit at the edge (ms). */
+  cacheMaxAgeMs: number | null;
+  /** `Age` of the copy we last received (ms) and whether it came from the edge cache. */
+  lastAgeMs: number | null;
+  lastCacheHit: boolean | null;
+  /** When the copy we hold was generated upstream: response `Date` minus `Age`, upstream's clock. */
+  generatedAt: string | null;
+  lastPollAt: string | null;
+  /** 200 (new body), 304 (not modified) or the last error status. */
+  lastStatus: number | null;
+  /** The validator we send back as If-None-Match; null if the upstream sends none. */
+  etag: string | null;
+}
+
 export interface FeedCounters {
   socketUpdates: number;
   socketReconnects: number;
+  /** Snapshot fetches that returned a body (HTTP 200). */
   restSnapshots: number;
+  /** Snapshot fetches the upstream answered with 304 Not Modified (poll transports). */
+  restNotModified: number;
   restFailures: number;
   /** Selections that arrived on the socket but couldn't be placed (=> resync). */
   unresolvedDeltas: number;
@@ -149,12 +187,14 @@ export interface FeedCounters {
 
 export interface FeedMeta {
   book: BookId;
+  bookName: string;
+  transport: Transport;
   league: string;
   leagueName: string;
-  /** DraftKings site key, e.g. dkcaon (Ontario) */
+  /** DraftKings site key (dkcaon = Ontario) or FanDuel region (on = Ontario) */
   site: string;
   feedState: FeedState;
-  /** True when we have not had a successful exchange with DraftKings for STALE_AFTER_MS. */
+  /** True when we have not had a successful exchange with the book for STALE_AFTER_MS. */
   stale: boolean;
   lastContactAt: string | null;
   lastChangeAt: string | null;
@@ -166,12 +206,20 @@ export interface FeedMeta {
   version: number;
   latency: LatencyStats;
   counters: FeedCounters;
+  /** Present for poll transports (and null for a push transport). */
+  poll: PollStats | null;
 }
 
 export interface OddsSnapshot {
   version: number;
   games: Game[];
   meta: FeedMeta;
+}
+
+/** `GET /api/odds`: every book's snapshot in one response. */
+export interface OddsBundle {
+  serverTime: string;
+  books: Partial<Record<BookId, OddsSnapshot>>;
 }
 
 export type ChangeField = 'odds' | 'line';
@@ -201,7 +249,7 @@ export interface OddsChange {
   latency?: UpdateLatency;
 }
 
-/** `event: delta` on the SSE stream */
+/** `event: delta` on the SSE stream. `meta.book` says which book it belongs to. */
 export interface DeltaEvent {
   version: number;
   /** Full objects for every game touched by this update. */
@@ -212,10 +260,16 @@ export interface DeltaEvent {
   emittedAt: string;
 }
 
-/** `event: heartbeat` on the SSE stream */
-export interface HeartbeatEvent {
-  serverTime: string;
+export interface HeartbeatBook {
+  book: BookId;
   version: number;
   feedState: FeedState;
   stale: boolean;
+  lastContactAt: string | null;
+}
+
+/** `event: heartbeat` on the SSE stream */
+export interface HeartbeatEvent {
+  serverTime: string;
+  books: HeartbeatBook[];
 }

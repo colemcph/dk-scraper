@@ -1,9 +1,12 @@
-import type {
-  DeltaEvent,
-  FeedCounters,
-  FeedMeta,
-  FeedState,
-  OddsSnapshot,
+import {
+  BOOK_LABEL,
+  type BookId,
+  type DeltaEvent,
+  type FeedCounters,
+  type FeedMeta,
+  type FeedState,
+  type OddsSnapshot,
+  type PollStats,
 } from '../shared/types.js';
 import type {
   BookAdapter,
@@ -19,7 +22,9 @@ import { positionKey, type ChangeSet, type OddsStore } from './store.js';
 
 export interface FeedConfig {
   resyncIntervalMs: number;
+  /** Base poll cadence; a poll-only adapter's cache-aware hint can stretch it up to pollMaxIntervalMs. */
   pollIntervalMs: number;
+  pollMaxIntervalMs?: number;
   wsFallbackAfterMs: number;
   staleAfterMs: number;
   refreshMinIntervalMs: number;
@@ -57,8 +62,9 @@ type Listener<T> = (payload: T) => void;
  *        v                           |                                               v
  *     DEGRADED (retry w/ backoff)    +---------------- socket back ---------------- POLLING (REST every pollIntervalMs)
  *
- * Whatever the state, the last-known-good snapshot is never dropped, and `meta()` tells the UI
- * exactly which state we are in and when we last heard from DraftKings.
+ * A book with no push feed (FanDuel) goes BOOTSTRAPPING -> POLLING and stays there; POLLING is
+ * its healthy state. Whatever the state, the last-known-good snapshot is never dropped, and
+ * `meta()` tells the UI exactly which state we are in and when we last heard from the book.
  */
 export class FeedManager {
   private state: FeedState = 'bootstrapping';
@@ -81,6 +87,7 @@ export class FeedManager {
     socketUpdates: 0,
     socketReconnects: 0,
     restSnapshots: 0,
+    restNotModified: 0,
     restFailures: 0,
     unresolvedDeltas: 0,
     driftCorrections: 0,
@@ -96,6 +103,9 @@ export class FeedManager {
   private stopped = false;
   private bootstrapAttempt = 0;
   private resyncInFlight: Promise<ChangeSet | null> | null = null;
+  /** Poll transports: the adapter's cache-aware delay for the next poll. */
+  private pollHintMs: number | undefined;
+  private pollingActive = false;
   private timers: {
     bootstrap?: NodeJS.Timeout;
     resync?: NodeJS.Timeout;
@@ -116,7 +126,7 @@ export class FeedManager {
   constructor(private readonly opts: FeedManagerOptions) {
     this.latency = opts.latency ?? new LatencyTracker();
     this.now = opts.now ?? Date.now;
-    this.log = opts.logger.child('feed');
+    this.log = opts.logger.child(`feed.${opts.adapter.book}`);
     this.startedAt = this.now();
     this.leagueName = opts.league.name;
   }
@@ -145,10 +155,15 @@ export class FeedManager {
 
   stop(): void {
     this.stopped = true;
+    this.pollingActive = false;
     for (const t of Object.values(this.timers)) if (t) clearTimeout(t);
     this.timers = {};
     this.subscription?.close();
     this.subscription = null;
+  }
+
+  get book(): BookId {
+    return this.opts.adapter.book;
   }
 
   get feedState(): FeedState {
@@ -163,6 +178,8 @@ export class FeedManager {
     const now = this.now();
     return {
       book: this.opts.adapter.book,
+      bookName: BOOK_LABEL[this.opts.adapter.book],
+      transport: this.opts.adapter.transport,
       league: this.opts.league.id,
       leagueName: this.leagueName,
       site: this.opts.adapter.site,
@@ -178,6 +195,7 @@ export class FeedManager {
       version: this.opts.store.version,
       latency: this.latency.stats(),
       counters: { ...this.counters },
+      poll: this.pollStats(),
     };
   }
 
@@ -230,7 +248,7 @@ export class FeedManager {
 
   /* ------------------------------------------------------------------------ snapshots */
 
-  /** Single-flight snapshot fetch + apply. Returns null when DraftKings could not be reached. */
+  /** Single-flight snapshot fetch + apply. Returns null when the book could not be reached. */
   resync(reason: ResyncReason): Promise<ChangeSet | null> {
     if (this.resyncInFlight) return this.resyncInFlight;
     this.resyncInFlight = this.doResync(reason).finally(() => {
@@ -261,12 +279,28 @@ export class FeedManager {
 
   private onSnapshot(res: SnapshotResult, reason: ResyncReason): ChangeSet {
     const now = this.now();
-    this.counters.restSnapshots++;
     this.counters.invalidEntities += res.invalidEntities;
     if (res.subscriptionSpec !== undefined) this.subscriptionSpec = res.subscriptionSpec;
+    if (res.nextPollInMs !== undefined) this.pollHintMs = res.nextPollInMs;
     this.lastContactAt = now;
     this.lastSnapshotAt = now;
 
+    if (res.notModified) {
+      // 304: the book confirmed nothing changed. Contact, yes; a new snapshot to diff, no.
+      this.counters.restNotModified++;
+      this.log.debug('snapshot not modified', { reason, durationMs: res.durationMs });
+      this.emitMeta();
+      return {
+        at: res.fetchedAt,
+        changes: [],
+        touchedGameIds: [],
+        removedGameIds: [],
+        changed: false,
+        skippedStale: 0,
+      };
+    }
+
+    this.counters.restSnapshots++;
     const cs = this.opts.store.applySnapshot(res.games, res.fetchedAt);
     this.counters.staleSnapshotSkips += cs.skippedStale;
     this.log.info('snapshot applied', {
@@ -413,13 +447,41 @@ export class FeedManager {
   /* ------------------------------------------------------------------------ polling */
 
   private startPolling(): void {
+    if (this.stopped) return;
+    this.pollingActive = true;
     if (this.timers.poll) return;
-    this.timers.poll = setInterval(() => void this.resync('poll'), this.opts.config.pollIntervalMs);
+    this.schedulePoll();
   }
 
   private stopPolling(): void {
-    if (this.timers.poll) clearInterval(this.timers.poll);
+    this.pollingActive = false;
+    if (this.timers.poll) clearTimeout(this.timers.poll);
     this.timers.poll = undefined;
+  }
+
+  /**
+   * A setTimeout chain rather than setInterval: a poll-only adapter reads the upstream's cache
+   * headers and asks to sleep until the edge copy can change (see fanduel/adapter.ts), so the
+   * delay differs from poll to poll. Clamped to [pollIntervalMs, pollMaxIntervalMs].
+   */
+  private schedulePoll(): void {
+    this.timers.poll = setTimeout(() => {
+      void this.resync('poll').finally(() => {
+        this.timers.poll = undefined;
+        if (this.pollingActive && !this.stopped) this.schedulePoll();
+      });
+    }, this.nextPollDelay());
+  }
+
+  private nextPollDelay(): number {
+    const base = this.opts.config.pollIntervalMs;
+    if (this.pollHintMs === undefined) return base;
+    const max = this.opts.config.pollMaxIntervalMs ?? 120_000;
+    return Math.min(max, Math.max(base, this.pollHintMs));
+  }
+
+  private pollStats(): PollStats | null {
+    return this.opts.adapter.pollStats?.() ?? null;
   }
 
   /* ------------------------------------------------------------------------ helpers */

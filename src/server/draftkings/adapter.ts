@@ -28,6 +28,7 @@ export const DK_LEAGUES: Record<string, LeagueRef> = {
 
 export class DraftKingsAdapter implements BookAdapter {
   readonly book = 'draftkings' as const;
+  readonly transport = 'push' as const;
   readonly site: string;
   private readonly rest: DkRestClient;
   private readonly logger: Logger;

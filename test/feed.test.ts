@@ -15,6 +15,7 @@ const NFL: LeagueRef = { id: '88808', name: 'NFL', subcategoryId: '4518' };
 
 class FakeAdapter implements BookAdapter {
   readonly book = 'draftkings' as const;
+  transport: 'push' | 'poll' = 'push';
   readonly site = 'dkcaon';
   games: Game[] = [game('g1')];
   failNext = 0;
@@ -22,6 +23,9 @@ class FakeAdapter implements BookAdapter {
   handlers: SubscriptionHandlers | null = null;
   closed = 0;
   withSocket = true;
+  /** Poll-transport behaviour: answer the next N fetches with 304 Not Modified, and a cache-aware delay hint. */
+  notModifiedNext = 0;
+  hintMs: number | undefined;
 
   async fetchSnapshot(): Promise<SnapshotResult> {
     this.fetches++;
@@ -29,11 +33,24 @@ class FakeAdapter implements BookAdapter {
       this.failNext--;
       throw new Error('HTTP 403 Access Denied');
     }
+    const hint = this.hintMs !== undefined ? { nextPollInMs: this.hintMs } : {};
+    if (this.notModifiedNext > 0) {
+      this.notModifiedNext--;
+      return {
+        games: [],
+        fetchedAt: new Date().toISOString(),
+        durationMs: 2,
+        invalidEntities: 0,
+        notModified: true,
+        ...hint,
+      };
+    }
     return {
       games: JSON.parse(JSON.stringify(this.games)),
       fetchedAt: new Date().toISOString(),
       durationMs: 5,
       invalidEntities: 0,
+      ...hint,
     };
   }
 
@@ -55,7 +72,10 @@ const config = {
 };
 
 function setup(adapter = new FakeAdapter()) {
-  if (!adapter.withSocket) (adapter as Partial<BookAdapter>).subscribe = undefined;
+  if (!adapter.withSocket) {
+    (adapter as Partial<BookAdapter>).subscribe = undefined;
+    adapter.transport = 'poll';
+  }
   const store = new OddsStore(NFL.id);
   const feed = new FeedManager({ adapter, league: NFL, store, logger: silentLogger, config });
   const deltas: DeltaEvent[] = [];
@@ -263,8 +283,74 @@ describe('FeedManager', () => {
     h.feed.start();
     await flush();
     expect(h.feed.feedState).toBe('polling');
+    expect(h.feed.meta().transport).toBe('poll');
     await vi.advanceTimersByTimeAsync(6_000);
     expect(h.adapter.fetches).toBe(3);
+    h.feed.stop();
+  });
+
+  it('treats 304 Not Modified as contact without a delta, and follows the poll hint within its clamps', async () => {
+    const adapter = new FakeAdapter();
+    adapter.withSocket = false;
+    const h = setup(adapter);
+    h.feed.start();
+    await flush();
+    expect(h.deltas).toHaveLength(1); // bootstrap snapshot
+
+    // The adapter reads "this copy cannot change for 9 s" off the cache headers: no poll before then.
+    adapter.hintMs = 9_000;
+    adapter.notModifiedNext = 5;
+    await vi.advanceTimersByTimeAsync(3_000); // base cadence: first poll at 3 s carries the hint back
+    expect(adapter.fetches).toBe(2);
+    await vi.advanceTimersByTimeAsync(8_000); // 11 s: still sleeping through the hint
+    expect(adapter.fetches).toBe(2);
+    await vi.advanceTimersByTimeAsync(1_000); // 12 s: hint elapsed
+    expect(adapter.fetches).toBe(3);
+
+    const meta = h.feed.meta();
+    expect(meta.counters.restNotModified).toBe(2);
+    expect(meta.counters.restSnapshots).toBe(1);
+    expect(meta.stale).toBe(false);
+    expect(Date.parse(meta.lastContactAt!)).toBe(Date.now()); // a 304 is contact
+    expect(Date.parse(meta.lastSnapshotAt!)).toBe(Date.now()); // and confirms the state
+    expect(h.deltas).toHaveLength(1); // nothing to broadcast
+    expect(h.metas.at(-1)?.counters.restNotModified).toBe(2); // but the poll was announced
+
+    // A hint below the base cadence is clamped up to it; a real change is applied and broadcast.
+    adapter.hintMs = 10;
+    adapter.notModifiedNext = 0;
+    adapter.games[0]!.markets.moneyline!.sides.home!.odds = { american: -200, decimal: 1.5 };
+    await vi.advanceTimersByTimeAsync(9_000); // 21 s: the 9 s hint from fetch 3
+    expect(adapter.fetches).toBe(4);
+    expect(h.deltas).toHaveLength(2);
+    expect(h.deltas[1]!.changes[0]).toMatchObject({ side: 'home', source: 'snapshot' });
+    await vi.advanceTimersByTimeAsync(3_000); // 24 s: base cadence, not 10 ms
+    expect(adapter.fetches).toBe(5);
+
+    // And a huge hint is clamped down to pollMaxIntervalMs (2 min by default).
+    adapter.hintMs = 10 * 60_000;
+    await vi.advanceTimersByTimeAsync(3_000); // 27 s: fetch 6 returns the huge hint
+    expect(adapter.fetches).toBe(6);
+    await vi.advanceTimersByTimeAsync(119_000);
+    expect(adapter.fetches).toBe(6);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(adapter.fetches).toBe(7);
+    h.feed.stop();
+  });
+
+  it('keeps polling through an outage and reports a poll-only book as degraded, not reconnecting', async () => {
+    const adapter = new FakeAdapter();
+    adapter.withSocket = false;
+    const h = setup(adapter);
+    h.feed.start();
+    await flush();
+    adapter.failNext = 2;
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.feed.feedState).toBe('degraded');
+    expect(h.feed.snapshot().games).toHaveLength(1); // last-known-good still served
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(h.feed.feedState).toBe('polling');
+    expect(h.feed.meta().counters.restFailures).toBe(2);
     h.feed.stop();
   });
 });

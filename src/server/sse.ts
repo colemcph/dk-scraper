@@ -28,7 +28,8 @@ interface ClientRecord extends SseClient {
 }
 
 export interface SseHubOptions {
-  feed: FeedManager;
+  /** One FeedManager per book; every event carries `meta.book`. */
+  feeds: FeedManager[];
   logger: Logger;
   heartbeatIntervalMs: number;
   replayBufferSize?: number;
@@ -36,16 +37,19 @@ export interface SseHubOptions {
 }
 
 /**
- * Fans FeedManager events out to every connected browser.
+ * Fans every book's FeedManager events out to every connected browser on one stream.
  *
- *  - On connect: `snapshot` (full state), unless the client's Last-Event-ID is recent enough that
- *    we can replay the deltas it missed from a small ring buffer.
- *  - `delta` for every change (id = store version, so EventSource reconnects resume cleanly).
- *  - `meta` on feed state transitions, `heartbeat` on a timer (client stale detection + clock offset).
+ *  - On connect: a `snapshot` per book (full state), unless the client's Last-Event-ID is recent
+ *    enough that we can replay the deltas it missed from a small ring buffer.
+ *  - `delta` for every change. Ids are a hub-wide sequence (not the per-book store version, which
+ *    would collide across books), so EventSource reconnects resume cleanly.
+ *  - `meta` on feed state transitions and polls, `heartbeat` on a timer (client stale detection
+ *    + clock offset), with every book's state in it.
  */
 export class SseHub {
   private readonly clients = new Map<number, ClientRecord>();
-  private readonly replay: { version: number; data: string }[] = [];
+  private readonly replay: { seq: number; data: string }[] = [];
+  private seq = 0;
   private nextId = 1;
   private heartbeat: NodeJS.Timeout | null = null;
   private readonly unsubscribe: Array<() => void> = [];
@@ -56,8 +60,10 @@ export class SseHub {
   }
 
   start(): void {
-    this.unsubscribe.push(this.opts.feed.on('delta', (e) => this.onDelta(e)));
-    this.unsubscribe.push(this.opts.feed.on('meta', (m) => this.onMeta(m)));
+    for (const feed of this.opts.feeds) {
+      this.unsubscribe.push(feed.on('delta', (e) => this.onDelta(e)));
+      this.unsubscribe.push(feed.on('meta', (m) => this.onMeta(m)));
+    }
     this.heartbeat = setInterval(() => this.sendHeartbeat(), this.opts.heartbeatIntervalMs);
   }
 
@@ -65,11 +71,17 @@ export class SseHub {
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     for (const u of this.unsubscribe) u();
+    this.unsubscribe.length = 0;
     for (const c of this.clients.values()) this.remove(c.id);
   }
 
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  /** The id of the latest delta sent (what a fresh client's snapshots are stamped with). */
+  get sequence(): number {
+    return this.seq;
   }
 
   add(sink: SseSink, lastEventId?: string): SseClient {
@@ -103,37 +115,40 @@ export class SseHub {
   /* ---------------------------------------------------------------------------------------- */
 
   private sendInitial(client: ClientRecord, lastEventId?: string): void {
-    const snapshot: OddsSnapshot = this.opts.feed.snapshot();
     const wanted = lastEventId ? Number.parseInt(lastEventId, 10) : NaN;
-    const oldest = this.replay[0]?.version;
+    const oldest = this.replay[0]?.seq;
 
     if (
       Number.isFinite(wanted) &&
       oldest !== undefined &&
       wanted >= oldest - 1 &&
-      wanted < snapshot.version
+      wanted < this.seq
     ) {
       // Resume: replay only what this client missed.
       for (const entry of this.replay) {
-        if (entry.version > wanted)
-          this.send(client, { event: 'delta', data: entry.data, id: String(entry.version) });
+        if (entry.seq > wanted)
+          this.send(client, { event: 'delta', data: entry.data, id: String(entry.seq) });
       }
       return;
     }
-    this.send(client, {
-      event: 'snapshot',
-      data: JSON.stringify(snapshot),
-      id: String(snapshot.version),
-      retry: 2_000,
-    });
+    for (const feed of this.opts.feeds) {
+      const snapshot: OddsSnapshot = feed.snapshot();
+      this.send(client, {
+        event: 'snapshot',
+        data: JSON.stringify(snapshot),
+        id: String(this.seq),
+        retry: 2_000,
+      });
+    }
   }
 
   private onDelta(event: DeltaEvent): void {
     const data = JSON.stringify(event);
-    this.replay.push({ version: event.version, data });
+    this.seq++;
+    this.replay.push({ seq: this.seq, data });
     const max = this.opts.replayBufferSize ?? 200;
     while (this.replay.length > max) this.replay.shift();
-    this.broadcast({ event: 'delta', data, id: String(event.version) });
+    this.broadcast({ event: 'delta', data, id: String(this.seq) });
   }
 
   private onMeta(meta: FeedMeta): void {
@@ -141,12 +156,18 @@ export class SseHub {
   }
 
   private sendHeartbeat(): void {
-    const meta = this.opts.feed.meta();
     const payload: HeartbeatEvent = {
       serverTime: new Date(this.now()).toISOString(),
-      version: meta.version,
-      feedState: meta.feedState,
-      stale: meta.stale,
+      books: this.opts.feeds.map((feed) => {
+        const meta = feed.meta();
+        return {
+          book: meta.book,
+          version: meta.version,
+          feedState: meta.feedState,
+          stale: meta.stale,
+          lastContactAt: meta.lastContactAt,
+        };
+      }),
     };
     this.broadcast({ event: 'heartbeat', data: JSON.stringify(payload) });
   }

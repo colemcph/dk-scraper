@@ -7,10 +7,13 @@ import {
   MARKET_LABEL,
   type OddsFormat,
 } from '../format.js';
+import { BookBadge } from './BookBadge.js';
 
 interface Props {
   moves: RecentMove[];
   format: OddsFormat;
+  /** The state keeps a longer history for the lead tracker; the list shows this many. */
+  limit?: number;
 }
 
 /** DraftKings createdTime -> this browser. The server emits synchronously after applying, so there is no separate server-hold term. */
@@ -19,20 +22,26 @@ function endToEnd(move: RecentMove): number | null {
   return move.latency.dkToServerMs + (move.serverToBrowserMs ?? 0);
 }
 
-export function RecentMoves({ moves, format }: Props) {
+function sourceLabel(move: RecentMove): string {
+  if (move.source === 'socket') return 'push';
+  return move.book === 'fanduel' ? 'poll' : 'snapshot';
+}
+
+export function RecentMoves({ moves, format, limit = 40 }: Props) {
+  const shown = moves.slice(0, limit);
   return (
     <section className="panel">
       <h2>
-        Recent moves <span className="muted">last {moves.length}</span>
+        Recent moves <span className="muted">last {shown.length}</span>
       </h2>
-      {moves.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="muted small">
-          No line movement since this page connected. Moves appear here the moment DraftKings pushes
-          them.
+          No line movement since this page connected. DraftKings moves appear the moment they are
+          pushed; FanDuel moves as soon as a poll sees them.
         </p>
       ) : (
         <ul className="moves">
-          {moves.map((m, i) => {
+          {shown.map((m, i) => {
             const before = m.prevOdds
               ? `${m.field === 'line' && m.prevLine !== undefined ? formatLine(m.market, m.side, m.prevLine) + ' ' : ''}${formatOdds(m.prevOdds, format)}`
               : '—';
@@ -47,11 +56,12 @@ export function RecentMoves({ moves, format }: Props) {
             const e2e = endToEnd(m);
             return (
               <li
-                key={`${m.gameId}-${m.market}-${m.side}-${m.at}-${i}`}
+                key={`${m.book}-${m.gameId}-${m.market}-${m.side}-${m.at}-${i}`}
                 className={`move move--${m.field}`}
               >
                 <div className="move-head">
                   <span className="move-time">{formatClock(m.at)}</span>
+                  <BookBadge book={m.book} />
                   <span className="move-game">{m.gameLabel}</span>
                   <span className="move-market">
                     {MARKET_LABEL[m.market]} · {m.sideLabel}
@@ -61,9 +71,7 @@ export function RecentMoves({ moves, format }: Props) {
                   <span className="move-before">{before}</span>
                   <span className={`move-arrow move-arrow--${dir || 'flat'}`}>→</span>
                   <span className="move-after">{after}</span>
-                  <span className="move-source muted">
-                    {m.source === 'socket' ? 'push' : 'snapshot'}
-                  </span>
+                  <span className="move-source muted">{sourceLabel(m)}</span>
                 </div>
                 {m.latency && (
                   <div

@@ -1,11 +1,11 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
-# One long-running Node web service (needed: it holds the DraftKings socket and serves SSE).
+# One long-running Node web service (needed: it holds the DraftKings socket, polls FanDuel and serves SSE).
 services:
   - type: web
     name: betstamp-take-home
     runtime: node
     plan: free
-    region: ohio # closest Render region to both DraftKings' edge and Toronto
+    region: ohio # closest Render region to both books' edges and Toronto
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
@@ -23,5 +23,17 @@ services:
         value: NFL
       - key: DK_SUBCATEGORY_ID
         value: '4518'
+      - key: FD_ENABLED
+        value: 'true'
+      - key: FD_REGION
+        value: on
+      - key: FD_PAGE_ID
+        value: nfl
+      - key: FD_LEAGUE_NAME
+        value: NFL
+      - key: FD_POLL_INTERVAL_MS
+        value: '1000'
+      - key: FD_CACHE_BYPASS
+        value: 'false'
       - key: LOG_LEVEL
         value: info

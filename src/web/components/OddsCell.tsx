@@ -9,20 +9,31 @@ interface Props {
   market: MarketType;
   side: Side | undefined;
   suspended: boolean;
-  /** false when DraftKings is not offering this market at all */
+  /** false when the book is not offering this market at all */
   offered: boolean;
+  /** "DraftKings" / "FanDuel", for the tooltips */
+  bookName: string;
   format: OddsFormat;
   flash: Flash | undefined;
   /** browser "now" translated to the server clock */
   serverNow: number;
 }
 
-export function OddsCell({ market, side, suspended, offered, format, flash, serverNow }: Props) {
+export function OddsCell({
+  market,
+  side,
+  suspended,
+  offered,
+  bookName,
+  format,
+  flash,
+  serverNow,
+}: Props) {
   if (!side) {
     const why = !offered
-      ? 'DraftKings is not offering this market'
+      ? `${bookName} is not offering this market`
       : suspended
-        ? 'Suspended by DraftKings'
+        ? `Suspended by ${bookName}`
         : 'Side not currently priced';
     return (
       <td className="odds-cell odds-cell--empty" title={why}>
@@ -46,7 +57,7 @@ export function OddsCell({ market, side, suspended, offered, format, flash, serv
 
   const title = [
     `${side.label}${line ? ` ${line}` : ''} ${formatOdds(side.odds, format)}`,
-    suspended ? 'SUSPENDED by DraftKings — showing the last price offered' : '',
+    suspended ? `SUSPENDED by ${bookName} — showing the last price offered` : '',
     `Updated ${new Date(side.updatedAt).toLocaleTimeString()}`,
     prev
       ? `Previously ${prev.line !== undefined ? formatLine(market, side.key, prev.line) + ' ' : ''}${formatOdds(prev.odds, format)} (until ${new Date(prev.changedAt).toLocaleTimeString()})`
