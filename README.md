@@ -372,7 +372,7 @@ FanDuel's page carries **no timestamps** â€” not on events, markets or prices â€
 ## Testing
 
 ```bash
-npm test               # vitest, 102 tests, < 2 s
+npm test               # vitest, 103 tests, < 2 s
 npm run chaos          # end-to-end resilience run against a mock DraftKings + mock FanDuel (~60 s, offline)
 npm run probe          # DraftKings: can this host reach the snapshot API and the socket?
 npm run probe:fanduel  # FanDuel: curl vs Node, one read, a 304, the CDN cache cycle; FD_CACHE_BYPASS=true adds origin reads
