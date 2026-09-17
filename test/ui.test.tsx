@@ -238,6 +238,7 @@ describe('LeadTracker', () => {
 
 describe('LatencyPanel', () => {
   const counters: FeedCounters = {
+    priceChanges: 3,
     socketUpdates: 12,
     socketReconnects: 0,
     restSnapshots: 2,
@@ -281,14 +282,17 @@ describe('LatencyPanel', () => {
     expect(html).toContain('DraftKings → server');
     expect(html).toContain('120 ms'); // DK p50
     expect(html).toContain('self-check: 0 negative of 12');
-    expect(html).toContain('12 push · 2 snapshots');
+    // The comparable number leads both books' counters; frames and bodies are not comparable.
+    expect(html).toContain('<strong>3 price changes</strong> · 12 push frames · 2 snapshots');
     expect(html).toContain('FanDuel freshness bound');
     expect(html).toContain('≤ 31 s'); // 30 s max-age + 1 s poll
     expect(html).toContain('generated <strong>12s ago</strong>'); // Date − Age
     expect(html).toContain('age at receipt 12 s');
     expect(html).toContain('next in 18 s');
     expect(html).toContain('<strong>304</strong>');
-    expect(html).toContain('2 bodies · 9 not-modified · 1 failures');
+    expect(html).toContain(
+      '<strong>3 price changes</strong> · 2 bodies · 9 not-modified · 1 failures',
+    );
     expect(html).toContain('Server → this browser');
 
     const bypass = renderToString(

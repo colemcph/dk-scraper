@@ -105,12 +105,13 @@ function DraftKingsSection({ meta }: { meta: FeedMeta }) {
         </dd>
       </div>
       <div>
-        <dt title="socket updates / snapshots / socket reconnects / drift (changes a snapshot found that the socket never delivered, after a 15 s grace period — should stay 0) / snapshot-first (changes a snapshot saw before the socket published them; expected, since DraftKings publishes to the socket seconds after its engine moves) / stale-skips (snapshot fields ignored because the socket was newer)">
+        <dt title="Price changes is the only counter comparable with FanDuel's: a push frame often changes no main-market price at all. Then: socket frames / snapshots / socket reconnects / drift (changes a snapshot found that the socket never delivered, after a 15 s grace period — should stay 0) / snapshot-first (changes a snapshot saw before the socket published them; expected, since DraftKings publishes to the socket seconds after its engine moves) / stale-skips (snapshot fields ignored because the socket was newer)">
           Counters
         </dt>
         <dd className="small">
-          {c.socketUpdates} push · {c.restSnapshots} snapshots · {c.socketReconnects} reconnects ·{' '}
-          {c.restFailures} REST failures ·{' '}
+          <strong>{c.priceChanges} price changes</strong> · {c.socketUpdates} push frames ·{' '}
+          {c.restSnapshots} snapshots · {c.socketReconnects} reconnects · {c.restFailures} REST
+          failures ·{' '}
           <span className={c.driftCorrections > 0 ? 'warn-text' : ''}>
             {c.driftCorrections} drift
           </span>{' '}
@@ -199,12 +200,12 @@ function FanDuelSection({
         <dd>{meta.feedState}</dd>
       </div>
       <div>
-        <dt title="page bodies received (200) / polls answered 304 Not Modified / failed requests / entities that could not be mapped">
+        <dt title="Price changes is the number to compare with DraftKings'. A run of not-modified polls means FanDuel has not republished the page — not that anything is wrong; on a settled board they can hold the same prices for many minutes while DraftKings reprices.">
           Counters
         </dt>
         <dd className="small">
-          {c.restSnapshots} bodies · {c.restNotModified} not-modified · {c.restFailures} failures ·{' '}
-          {c.invalidEntities} invalid
+          <strong>{c.priceChanges} price changes</strong> · {c.restSnapshots} bodies ·{' '}
+          {c.restNotModified} not-modified · {c.restFailures} failures · {c.invalidEntities} invalid
         </dd>
       </div>
       {meta.lastError && (

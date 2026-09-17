@@ -205,6 +205,7 @@ describe('FeedManager', () => {
     h.adapter.handlers!.onDelta(live);
     expect(h.feed.meta().latency.byPhase.inplay.samples).toBe(1);
     expect(h.feed.meta().counters.socketUpdates).toBe(2);
+    expect(h.feed.meta().counters.priceChanges).toBe(2);
 
     const fetches = h.adapter.fetches;
     const ghost = emptyDelta();
@@ -214,6 +215,10 @@ describe('FeedManager', () => {
     });
     h.adapter.handlers!.onDelta(ghost);
     expect(h.feed.meta().counters.unresolvedDeltas).toBe(1);
+    // A frame that moves no main-market price still counts as a frame. Only `priceChanges` is
+    // comparable with another book's activity — this is the counter the UI leads with.
+    expect(h.feed.meta().counters.socketUpdates).toBe(3);
+    expect(h.feed.meta().counters.priceChanges).toBe(2);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(h.adapter.fetches).toBe(fetches + 1);
     h.feed.stop();

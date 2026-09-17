@@ -87,6 +87,7 @@ export class FeedManager {
   private leagueName: string;
 
   private readonly counters: FeedCounters = {
+    priceChanges: 0,
     socketUpdates: 0,
     socketReconnects: 0,
     restSnapshots: 0,
@@ -352,6 +353,7 @@ export class FeedManager {
         this.pendingSocketConfirm.set(positionKey(c.gameId, c.market, c.side), now);
       }
     }
+    this.counters.priceChanges += cs.changes.length;
     if (cs.changes.length > 0) this.lastChangeAt = now;
     if (cs.changed) this.emitDelta(cs);
     else this.emitMeta();
@@ -430,6 +432,7 @@ export class FeedManager {
       });
       this.scheduleUnresolvedResync();
     }
+    this.counters.priceChanges += result.changes.length;
     if (result.changes.length > 0) this.lastChangeAt = now;
     if (result.changed) this.emitDelta(result);
   }

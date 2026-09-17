@@ -164,6 +164,12 @@ export interface PollStats {
 }
 
 export interface FeedCounters {
+  /**
+   * Main-market price and line changes applied. This is the number that is comparable *across*
+   * books: `socketUpdates` counts DraftKings frames (most of which change no main-market price)
+   * and `restSnapshots` counts FanDuel page bodies, so those two say nothing about each other.
+   */
+  priceChanges: number;
   socketUpdates: number;
   socketReconnects: number;
   /** Snapshot fetches that returned a body (HTTP 200). */
