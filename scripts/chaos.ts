@@ -146,21 +146,18 @@ function stopSocket(): Promise<void> {
 
 /* --------------------------------------------------------------------------------- mock FanDuel */
 
+interface FdRunner {
+  selectionId: number;
+  handicap: number;
+  winRunnerOdds: {
+    americanDisplayOdds: { americanOdds: number };
+    trueOdds: { decimalOdds: { decimalOdds: number } };
+  };
+}
 interface FdPage {
   attachments: {
     events: Record<string, { eventId: number; openDate: string }>;
-    markets: Record<
-      string,
-      {
-        marketTime: string;
-        runners: Array<{
-          winRunnerOdds: {
-            americanDisplayOdds: { americanOdds: number };
-            trueOdds: { decimalOdds: { decimalOdds: number } };
-          };
-        }>;
-      }
-    >;
+    markets: Record<string, { marketId: string; marketTime: string; runners: FdRunner[] }>;
   };
 }
 const fdCurrent = JSON.parse(readFileSync(resolve('fixtures/fd-page-nfl.json'), 'utf8')) as FdPage;
@@ -193,6 +190,36 @@ const fdRest: Server = createServer((req, res) => {
   if (fdMode === 'error') {
     res.writeHead(500, { 'content-type': 'application/json' });
     res.end('{"error":true}');
+    return;
+  }
+  // The live price channel: uncached, returns only the markets asked for (like the real one).
+  if (req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      let ids: string[] = [];
+      try {
+        ids = (JSON.parse(body) as { marketIds?: string[] }).marketIds ?? [];
+      } catch {
+        /* fall through with none */
+      }
+      const payload = ids
+        .map((id) => fdCurrent.attachments.markets[id])
+        .filter((m): m is NonNullable<typeof m> => m !== undefined)
+        .map((m) => ({
+          marketId: m.marketId,
+          marketStatus: 'OPEN',
+          inplay: false,
+          runnerDetails: m.runners.map((r) => ({
+            selectionId: r.selectionId,
+            handicap: r.handicap,
+            runnerStatus: 'ACTIVE',
+            winRunnerOdds: r.winRunnerOdds,
+          })),
+        }));
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache' });
+      res.end(JSON.stringify(payload));
+    });
     return;
   }
   if (Date.now() - fdCopyAt >= FD_MAX_AGE_S * 1000) fdCopyAt = Date.now(); // edge copy turns over
@@ -241,7 +268,11 @@ interface BookOdds {
       };
     };
   }>;
-  meta?: { lastError?: { message: string } | null; counters?: { restNotModified?: number } };
+  meta?: {
+    lastError?: { message: string } | null;
+    counters?: { priceChanges?: number };
+    poll?: { prices?: { healthy: boolean; updates: number } | null } | null;
+  };
 }
 
 async function report(step: string): Promise<void> {
@@ -263,8 +294,10 @@ async function report(step: string): Promise<void> {
     .filter((e): e is { book: string; at: string; message: string } => e !== null)
     .sort((a, b) => b.at.localeCompare(a.at));
   const err = errs[0] ? `lastError(${errs[0].book})=${errs[0].message.slice(0, 34)}` : '';
+  const fdPrices = fd?.meta?.poll?.prices;
+  const priceCh = fdPrices ? `${fdPrices.healthy ? 'ok' : 'DOWN'}/${fdPrices.updates}` : '—';
   console.log(
-    `${step.padEnd(50)} DK=${st('draftkings').padEnd(13)} FD=${st('fanduel').padEnd(15)} games=${String(dk?.games?.length ?? 0).padStart(2)}/${String(fd?.games?.length ?? 0).padEnd(2)} DET ML DK=${String(dkDet ?? '—').padEnd(5)} FD=${String(fdDet ?? '—').padEnd(5)} 304s=${String(fd?.meta?.counters?.restNotModified ?? 0).padEnd(3)} ${err}`.trimEnd(),
+    `${step.padEnd(50)} DK=${st('draftkings').padEnd(13)} FD=${st('fanduel').padEnd(15)} games=${String(dk?.games?.length ?? 0).padStart(2)}/${String(fd?.games?.length ?? 0).padEnd(2)} DET ML DK=${String(dkDet ?? '—').padEnd(5)} FD=${String(fdDet ?? '—').padEnd(5)} FDprices=${priceCh.padEnd(7)} ${err}`.trimEnd(),
   );
 }
 
@@ -282,7 +315,9 @@ async function main(): Promise<void> {
       DK_WS_URL: `ws://127.0.0.1:${WS_PORT}/websocket`,
       FD_ENABLED: 'true',
       FD_REST_BASE_URL: `http://127.0.0.1:${FD_PORT}`,
+      FD_PRICE_BASE_URL: `http://127.0.0.1:${FD_PORT}`,
       FD_POLL_INTERVAL_MS: '500',
+      FD_PRICE_INTERVAL_MS: '500',
       RESYNC_INTERVAL_MS: '4000',
       POLL_INTERVAL_MS: '1000',
       WS_FALLBACK_AFTER_MS: '3000',

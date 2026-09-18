@@ -76,6 +76,8 @@ export function displayState(meta: FeedMeta | null, connection: Connection): Dis
 export function freshnessBoundMs(meta: FeedMeta): number | null {
   const p = meta.poll;
   if (!p) return null;
+  // The live price channel is uncached, so when it is running the bound is just its interval.
+  if (p.prices && p.prices.healthy) return p.prices.intervalMs + (p.prices.p50Ms ?? 0);
   if (p.bypassCache) return p.intervalMs + (p.p50Ms ?? 0);
   return (p.cacheMaxAgeMs ?? 0) + p.intervalMs;
 }
@@ -129,7 +131,11 @@ function BookStatus({
       {meta?.transport === 'poll' ? (
         <span
           className="status-item"
-          title={`${name} publishes no timestamps and has no push feed. Its page API sits behind a CDN cache (max-age ${formatSeconds(meta.poll?.cacheMaxAgeMs)}); this is the most a number here can lag ${name}'s public API: cache max-age + one poll interval. Details in the latency panel.`}
+          title={
+            meta.poll?.prices?.healthy
+              ? `${name} publishes no timestamps and has no push feed, so this is a bound, not a measurement: their uncached live price endpoint (the one their own client polls for the betslip) is read every ${formatSeconds(meta.poll.prices.intervalMs)}, so nothing here can lag ${name}'s own API by more than that plus the request. Details in the latency panel.`
+              : `${name} publishes no timestamps and has no push feed. Prices are coming from its page API behind a CDN cache (max-age ${formatSeconds(meta.poll?.cacheMaxAgeMs)}); this is the most a number here can lag ${name}'s public API: cache max-age + one poll interval. Details in the latency panel.`
+          }
         >
           freshness <strong>≤ {formatSeconds(freshnessBoundMs(meta))}</strong>
         </span>

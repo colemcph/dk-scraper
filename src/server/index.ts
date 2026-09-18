@@ -52,9 +52,12 @@ if (config.fd.enabled) {
     apiKey: config.fd.apiKey,
     timezone: config.fd.timezone,
     pollIntervalMs: config.fd.pollIntervalMs,
+    priceIntervalMs: config.fd.priceIntervalMs,
+    pricesEnabled: config.fd.pricesEnabled,
     bypassCache: config.fd.bypassCache,
     logger,
     ...(config.fd.restBaseUrl ? { rest: { baseUrl: config.fd.restBaseUrl } } : {}),
+    ...(config.fd.priceBaseUrl ? { prices: { baseUrl: config.fd.priceBaseUrl } } : {}),
   });
   feeds.push(
     new FeedManager({

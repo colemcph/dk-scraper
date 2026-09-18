@@ -133,3 +133,27 @@ Short, dated records of the choices that shaped this project and the evidence be
 **Decision:** keep the bypass off by default and say so with the evidence. It costs FanDuel an origin request and this service ~10× the latency per poll, for data that was identical every time it was checked. The flag stays for the demo, and the probe re-runs the comparison on demand — the honest caveat being that a settled board is the easy case; the interesting repeat is during in-play.
 
 **Aside worth keeping:** in the same window DraftKings pushed 12 price changes while FanDuel's page did not change once (one ETag, 32 consecutive 304s, ~8 minutes). The two books are not moving at the same tempo, which is exactly what the comparison view is for — and a reminder that a "DraftKings led" reading is often DraftKings simply repricing more often, not a race being won.
+
+## 2026-09-17 — FanDuel's real live channel: the endpoint their betslip polls
+
+**The prompt:** reviewing the feeds, the question was put plainly — DraftKings and FanDuel "should get relatively similar updates", and FanDuel gets routine snapshot updates when you add a bet to the betslip. The first half turned out to be a reporting artefact (see the price-changes entry); the second half was a real lead, and it beat the design I had settled on.
+
+**What it found.** Their bundle has `HighPriorityMarketPricing` / `fetchSmp`, dispatched from `addToBetslip`, `toggleSelection` and `incrementMarketSubscriptions`, with `pollingConfig: { refreshTimeInMs: 5000, batchSize: 70 }`:
+
+```
+POST https://smp.{region}.sportsbook.fanduel.ca/api/sports/fixedodds/readonly/v1/getMarketPrices
+{ "marketIds": [...] }      ->  Cache-Control: no-cache
+```
+
+Measured live: 200 in ~60–80 ms, ~1.2 KB per market against the page's 1 MB, and — tested four ways — **no credential of any kind is required**, not even the `_ak` key the page wants. `readonly` in the path is literal; the neighbouring betslip endpoints are the ones that need a login, which is the line I did not cross.
+
+**Why it matters:** the coupon page sits behind `max-age=30`, so _nothing_ read from it can be fresher than ~30 s however fast you poll. That was the binding constraint on the whole FanDuel side, and this endpoint removes it: freshness becomes the poll interval, set to the 5 s their own client uses. **≈31 s → ≈5 s**, at comparable bandwidth.
+
+**Decision:** run both channels, the same shape as the DraftKings adapter — the page is the _structure_ (which games and markets exist, teams, kickoffs), re-read only when its cached copy can have changed; the price channel is the _numbers_, every 5 s. Specifically:
+
+- Batch at **70**, because the server silently truncates larger batches (96 ids returned 80) and the missing ones would have frozen at stale prices without any error.
+- The price channel is **additive and never load-bearing**: any failure falls back to the page's own prices, flags `prices.healthy = false`, widens the stated bound back to the CDN's, and keeps serving. A new upstream dependency must not be able to take a working book down.
+- An **unrecognised selection id** (what a line move looks like when FanDuel re-keys a selection) forces an early structure refresh instead of being dropped, since the new id only exists on the page.
+- The store is handed a **clone** every poll, never the cached page objects, because it mutates what it is given.
+
+**Correction this forces:** the earlier entry concluded FanDuel had no live price channel at all, on the strength of the AppSync socket belonging to their prediction-market product. That was true about the socket and wrong about the conclusion — there was a fast path, over HTTP, one endpoint away. The lesson is that "no WebSocket" is not the same as "no live channel", and the place to look is what the client does when it has a reason to care about a price.

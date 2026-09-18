@@ -33,6 +33,10 @@ services:
         value: NFL
       - key: FD_POLL_INTERVAL_MS
         value: '1000'
+      - key: FD_PRICE_INTERVAL_MS
+        value: '5000'
+      - key: FD_PRICES_ENABLED
+        value: 'true'
       - key: FD_CACHE_BYPASS
         value: 'false'
       - key: LOG_LEVEL

@@ -25,8 +25,14 @@ export interface AppConfig {
     /** The public `_ak` key FanDuel's own bundle sends. */
     apiKey: string;
     timezone: string;
-    /** Fast poll cadence (ms). The adapter sleeps through the CDN's max-age and polls at this rate around its expiry. */
+    /** Fast poll cadence (ms) for the structure page. The adapter sleeps through the CDN's max-age and polls at this rate around its expiry. */
     pollIntervalMs: number;
+    /** Cadence (ms) for the uncached live price channel (getMarketPrices). FanDuel's own client uses 5 s. */
+    priceIntervalMs: number;
+    /** Turn the live price channel off and take prices from the cached page instead. */
+    pricesEnabled: boolean;
+    /** Override the price API origin (chaos tests). Default: https://smp.{region}.sportsbook.fanduel.ca */
+    priceBaseUrl?: string;
     /** Defeat the CDN cache with a unique query string (every poll hits FanDuel's origin). Off by default. */
     bypassCache: boolean;
     /** Override the API origin (chaos tests). Default: https://sbapi.{region}.sportsbook.fanduel.ca/api */
@@ -90,8 +96,11 @@ export function loadConfig(): AppConfig {
       apiKey: str('FD_API_KEY', 'FhMFpcPWXMeyZxOx'),
       timezone: str('FD_TIMEZONE', 'America/Toronto'),
       pollIntervalMs: int('FD_POLL_INTERVAL_MS', 1_000),
+      priceIntervalMs: int('FD_PRICE_INTERVAL_MS', 5_000),
+      pricesEnabled: bool('FD_PRICES_ENABLED', true),
       bypassCache: bool('FD_CACHE_BYPASS', false),
       ...(process.env.FD_REST_BASE_URL ? { restBaseUrl: process.env.FD_REST_BASE_URL } : {}),
+      ...(process.env.FD_PRICE_BASE_URL ? { priceBaseUrl: process.env.FD_PRICE_BASE_URL } : {}),
     },
     feed: {
       resyncIntervalMs: int('RESYNC_INTERVAL_MS', 60_000),

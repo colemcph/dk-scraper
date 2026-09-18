@@ -7,6 +7,7 @@ import {
   formatLine,
   formatMs,
   formatOdds,
+  formatSeconds,
   MARKET_LABEL,
   type OddsFormat,
 } from '../format.js';
@@ -19,6 +20,8 @@ interface Props {
   /** Two moves closer than this are treated as one move seen at two books. */
   windowMs?: number;
   limit?: number;
+  /** How far behind FanDuel's own board this service can be, for the caveat below the list. */
+  fanduelBoundMs?: number | null;
 }
 
 function describe(m: BookMove, format: OddsFormat): string {
@@ -31,7 +34,15 @@ function describe(m: BookMove, format: OddsFormat): string {
  * which book showed it first. Works off the browser's own move history, so it needs both feeds to
  * have moved the same market while this tab was open.
  */
-export function LeadTracker({ moves, books, format, windowMs = 120_000, limit = 8 }: Props) {
+export function LeadTracker({
+  moves,
+  books,
+  format,
+  windowMs = 120_000,
+  limit = 8,
+  fanduelBoundMs = null,
+}: Props) {
+  const fdBound = fanduelBoundMs === null ? 'one poll' : formatSeconds(fanduelBoundMs);
   const pairing = useMemo(
     () =>
       pairMoves(
@@ -101,10 +112,10 @@ export function LeadTracker({ moves, books, format, windowMs = 120_000, limit = 
         </>
       )}
       <p className="muted small">
-        FanDuel's time is when this service saw the change behind FanDuel's CDN cache (up to 30 s
-        after their trader moved), DraftKings' is their engine timestamp. A FanDuel "lead" means the
-        number was public on FanDuel first; a DraftKings lead of under ~30 s says nothing about who
-        priced it first.
+        DraftKings' time is their own engine timestamp; FanDuel's is when this service saw the
+        change on their uncached price endpoint, so it trails their trader by at most one poll
+        interval ({fdBound}). A "lead" therefore means the number was public at that book first — a
+        lead shorter than {fdBound} says nothing about who actually priced it first.
       </p>
     </section>
   );

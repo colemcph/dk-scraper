@@ -255,15 +255,19 @@ describe('FanDuelAdapter', () => {
 
   it('returns a normalized snapshot with the hint, a 304 as notModified, and freshness stats', async () => {
     const { impl } = fakeFetch([
-      () => new Response(PAGE, { status: 200, headers: HEADERS }),
-      () => new Response(null, { status: 304, headers: { ...HEADERS, age: '29' } }),
+      // age 30: the edge copy is already at max-age, so the next poll re-reads it straight away.
+      () => new Response(PAGE, { status: 200, headers: { ...HEADERS, age: '30' } }),
+      () => new Response(null, { status: 304, headers: { ...HEADERS, age: '30' } }),
       () => new Response('nope', { status: 503, headers: { 'retry-after': '2' } }),
     ]);
+    // Page-only: the live price channel has its own file (fanduel-prices.test.ts).
     const adapter = new FanDuelAdapter({
       region: 'on',
       apiKey: 'KEY',
       timezone: 'America/Toronto',
-      pollIntervalMs: 1_000,
+      pollIntervalMs: 0,
+      priceIntervalMs: 5_000,
+      pricesEnabled: false,
       logger: silentLogger,
       rest: { fetchImpl: impl },
     });
@@ -273,25 +277,26 @@ describe('FanDuelAdapter', () => {
     const first = await adapter.fetchSnapshot(NFL);
     expect(first.games).toHaveLength(4);
     expect(first.notModified).toBeUndefined();
-    expect(first.nextPollInMs).toBe(18_000);
+    expect(first.nextPollInMs).toBe(0); // already at max-age: nothing to wait for
     let stats = adapter.pollStats();
     expect(stats).toMatchObject({
-      intervalMs: 1_000,
-      suggestedIntervalMs: 18_000,
+      intervalMs: 0,
       bypassCache: false,
       cacheMaxAgeMs: 30_000,
-      lastAgeMs: 12_000,
+      lastAgeMs: 30_000,
       lastCacheHit: true,
       lastStatus: 200,
       etag: 'W/"f9d94-abc"',
-      generatedAt: '2026-09-17T21:59:48.000Z', // Date − Age
+      generatedAt: '2026-09-17T21:59:30.000Z', // Date − Age
     });
+    expect(stats.prices).toBeNull(); // this adapter runs page-only
 
+    // A 304 with no live price channel means nothing can have moved: reported as unchanged.
     const second = await adapter.fetchSnapshot(NFL);
-    expect(second).toMatchObject({ games: [], notModified: true, nextPollInMs: 1_000 });
+    expect(second).toMatchObject({ games: [], notModified: true });
     stats = adapter.pollStats();
     expect(stats.lastStatus).toBe(304);
-    expect(stats.lastAgeMs).toBe(29_000);
+    expect(stats.lastAgeMs).toBe(30_000);
 
     await expect(adapter.fetchSnapshot(NFL)).rejects.toMatchObject({
       status: 503,

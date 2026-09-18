@@ -161,6 +161,30 @@ export interface PollStats {
   lastStatus: number | null;
   /** The validator we send back as If-None-Match; null if the upstream sends none. */
   etag: string | null;
+  /**
+   * The book's uncached live-price channel, when it has one. FanDuel's `getMarketPrices` answers
+   * `Cache-Control: no-cache`, so when this is running the freshness bound is this interval rather
+   * than the cached page's max-age, and the fields above describe only the structure refresh.
+   */
+  prices: PricePollStats | null;
+}
+
+export interface PricePollStats {
+  intervalMs: number;
+  /** request -> response, ms (all batches in parallel) */
+  p50Ms: number | null;
+  lastMs: number | null;
+  /** 200, or the last error status. */
+  lastStatus: number | null;
+  lastPollAt: string | null;
+  /** Markets requested and batches sent on the last poll. */
+  markets: number;
+  batches: number;
+  /** Price updates applied since start, and selections the structure page did not know about. */
+  updates: number;
+  unmatched: number;
+  /** False after a failure: the feed is running on the cached page alone until it recovers. */
+  healthy: boolean;
 }
 
 export interface FeedCounters {

@@ -141,6 +141,7 @@ function FanDuelSection({
   browserNow: number;
 }) {
   const p = meta.poll;
+  const prices = p?.prices ?? null;
   const c = meta.counters;
   const bound = freshnessBoundMs(meta);
   const generatedAgo = serverAgoMs(p?.generatedAt, offset, browserNow);
@@ -148,21 +149,45 @@ function FanDuelSection({
   return (
     <>
       <div>
-        <dt title="FanDuel publishes no timestamps and has no public push feed. Its page API sits behind a CloudFront cache; the copy we receive can be up to max-age old, and we look again within one poll interval of it being able to change. This is the most a FanDuel number on this page can lag FanDuel's own public API.">
+        <dt title="FanDuel publishes no timestamps and has no push feed, so this is a bound rather than a measurement. With the live price channel running it is just the poll interval, because that endpoint is not cached; without it, the page's CDN copy can be up to max-age old before we even look.">
           FanDuel freshness bound
         </dt>
         <dd>
           <strong>≤ {formatSeconds(bound)}</strong>{' '}
           <span className="muted">
-            {p?.bypassCache
-              ? `(cache bypassed: ${formatSeconds(p.intervalMs)} poll + request)`
-              : `(CDN max-age ${formatSeconds(p?.cacheMaxAgeMs)} + ${formatSeconds(p?.intervalMs)} poll)`}
+            {prices?.healthy
+              ? `(uncached price channel every ${formatSeconds(prices.intervalMs)} + request)`
+              : p?.bypassCache
+                ? `(cache bypassed: ${formatSeconds(p.intervalMs)} poll + request)`
+                : `(CDN max-age ${formatSeconds(p?.cacheMaxAgeMs)} + ${formatSeconds(p?.intervalMs)} poll)`}
           </span>
         </dd>
       </div>
+      {prices && (
+        <div>
+          <dt title="getMarketPrices: the endpoint FanDuel's own client polls once a selection is in the betslip. Cache-Control: no-cache, ~60 ms, and it returns only the markets asked for, in batches of 70. The page is still read for structure — which games and markets exist — but the numbers come from here.">
+            Live price channel
+          </dt>
+          <dd className="small">
+            {prices.healthy ? (
+              <>
+                every {formatSeconds(prices.intervalMs)} · {prices.markets} markets in{' '}
+                {prices.batches} batch{prices.batches === 1 ? '' : 'es'} · last{' '}
+                <strong>{prices.lastStatus ?? '—'}</strong> in {formatMs(prices.lastMs)} · p50{' '}
+                {formatMs(prices.p50Ms)} · {prices.updates} price updates
+              </>
+            ) : (
+              <span className="warn-text">
+                unavailable (last status {prices.lastStatus ?? '—'}) — falling back to the cached
+                page, so the bound above is the CDN's
+              </span>
+            )}
+          </dd>
+        </div>
+      )}
       <div>
-        <dt title="Response Date minus Age on the CDN's clock: when the copy we hold was produced by FanDuel's origin. The Age at receipt says how long it had already sat at the edge.">
-          Copy we hold
+        <dt title="The structure page: which games and markets exist. Response Date minus Age on the CDN's clock is when that copy was produced by FanDuel's origin; the Age at receipt says how long it had already sat at the edge. Prices do not come from here while the live channel is healthy.">
+          Structure page
         </dt>
         <dd className="small">
           {p?.generatedAt ? (
@@ -200,12 +225,12 @@ function FanDuelSection({
         <dd>{meta.feedState}</dd>
       </div>
       <div>
-        <dt title="Price changes is the number to compare with DraftKings'. A run of not-modified polls means FanDuel has not republished the page — not that anything is wrong; on a settled board they can hold the same prices for many minutes while DraftKings reprices.">
+        <dt title="Price changes is the number to compare with DraftKings'. Polls are how many times the board was re-read; most find nothing changed, which is normal — on a settled board FanDuel can hold the same prices for many minutes while DraftKings reprices.">
           Counters
         </dt>
         <dd className="small">
-          <strong>{c.priceChanges} price changes</strong> · {c.restSnapshots} bodies ·{' '}
-          {c.restNotModified} not-modified · {c.restFailures} failures · {c.invalidEntities} invalid
+          <strong>{c.priceChanges} price changes</strong> · {c.restSnapshots} polls ·{' '}
+          {c.restFailures} failures · {c.invalidEntities} invalid
         </dd>
       </div>
       {meta.lastError && (

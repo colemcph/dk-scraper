@@ -2,6 +2,7 @@ import { americanFromDecimal, decimalFromAmerican, roundDecimal } from '../../sh
 import { canonicalTeam } from '../../shared/teams.js';
 import type { Game, Market, MarketType, Odds, SideKey, Team } from '../../shared/types.js';
 import type { LeagueRef } from '../book.js';
+import type { PricedMarket } from './prices.js';
 import { FdEvent, FdMarket, FdPage, FdRunner, type FdMarketT, type FdRunnerT } from './schema.js';
 
 /* ------------------------------------------------------------------------------------------------
@@ -226,4 +227,82 @@ export function normalizeFanDuelPage(
   }
 
   return { games: [...games.values()], invalidEntities: invalid };
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Live prices
+ * ---------------------------------------------------------------------------------------------- */
+
+export interface AppliedPrices {
+  /** Sides whose price or line the live channel changed. */
+  updated: number;
+  /**
+   * Selections the price channel returned that the page structure does not know about — normally
+   * because a line moved and FanDuel re-keyed the selection. The caller refreshes the page sooner
+   * when this happens, since the new selection only exists there.
+   */
+  unmatched: number;
+  /** Markets the page has that the price channel did not return. */
+  missingMarkets: number;
+}
+
+/**
+ * Overlays live prices (from `getMarketPrices`) onto games built from the page structure, matching
+ * on the same `marketId:selectionId` key the page normalizer assigns. Mutates `games` in place and
+ * stamps anything it changes with `at`, so the store sees the live-channel time rather than the
+ * (older) page fetch time.
+ */
+export function applyMarketPrices(
+  games: Game[],
+  prices: Map<string, PricedMarket>,
+  at: string,
+): AppliedPrices {
+  let updated = 0;
+  let unmatched = 0;
+  let missingMarkets = 0;
+  const seen = new Set<string>();
+
+  for (const game of games) {
+    for (const type of ['moneyline', 'spread', 'total'] as const) {
+      const market = game.markets[type];
+      if (!market) continue;
+      const priced = prices.get(market.sourceMarketId);
+      if (!priced) {
+        missingMarkets++;
+        continue;
+      }
+      seen.add(market.sourceMarketId);
+      if (priced.inPlay) game.status = 'live';
+      if (market.suspended !== priced.suspended) {
+        market.suspended = priced.suspended;
+        market.updatedAt = at;
+      }
+      const bySelection = new Map(
+        Object.values(market.sides).map((side) => [side.sourceSelectionId, side]),
+      );
+      for (const runner of priced.runners) {
+        const key = `${priced.marketId}:${runner.selectionId}`;
+        const side = bySelection.get(key);
+        if (!side) {
+          unmatched++;
+          continue;
+        }
+        const line = type === 'moneyline' ? undefined : runner.line;
+        const moved =
+          side.odds.american !== runner.odds.american ||
+          side.odds.decimal !== runner.odds.decimal ||
+          (line !== undefined && side.line !== line);
+        if (!moved) continue;
+        side.odds = runner.odds;
+        if (line !== undefined) side.line = line;
+        side.updatedAt = at;
+        market.updatedAt = at;
+        game.updatedAt = at;
+        updated++;
+      }
+    }
+  }
+  for (const id of prices.keys()) if (!seen.has(id)) unmatched++;
+
+  return { updated, unmatched, missingMarkets };
 }

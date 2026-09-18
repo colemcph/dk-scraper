@@ -6,7 +6,7 @@ import { LatencyPanel } from './components/LatencyPanel.js';
 import { LeadTracker } from './components/LeadTracker.js';
 import { OddsTable } from './components/OddsTable.js';
 import { RecentMoves } from './components/RecentMoves.js';
-import { displayState, StatusStrip } from './components/StatusStrip.js';
+import { displayState, freshnessBoundMs, StatusStrip } from './components/StatusStrip.js';
 import { useOddsFeed, type Connection } from './useOddsFeed.js';
 import { localTimeZoneLabel, percentile, type OddsFormat } from './format.js';
 
@@ -274,7 +274,12 @@ export function App() {
         <aside className="layout-side">
           <RecentMoves moves={state.moves} format={format} />
           {books.length >= 2 && (
-            <LeadTracker moves={state.moves} books={state.books} format={format} />
+            <LeadTracker
+              moves={state.moves}
+              books={state.books}
+              format={format}
+              fanduelBoundMs={fdMeta ? freshnessBoundMs(fdMeta) : null}
+            />
           )}
           <LatencyPanel
             dk={dkMeta}

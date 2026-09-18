@@ -51,6 +51,28 @@ const fdMeta = (over: Partial<FeedMeta> = {}): FeedMeta =>
       lastPollAt: new Date(now - 1_000).toISOString(),
       lastStatus: 304,
       etag: 'W/"abc"',
+      prices: null,
+    },
+    ...over,
+  });
+
+/** FanDuel with the uncached live price channel running: the bound is its interval, not the CDN's. */
+const fdLiveMeta = (over: Partial<FeedMeta> = {}): FeedMeta =>
+  fdMeta({
+    poll: {
+      ...fdMeta().poll!,
+      prices: {
+        intervalMs: 5_000,
+        p50Ms: 80,
+        lastMs: 79,
+        lastStatus: 200,
+        lastPollAt: new Date(now - 1_000).toISOString(),
+        markets: 96,
+        batches: 2,
+        updates: 4,
+        unmatched: 0,
+        healthy: true,
+      },
     },
     ...over,
   });
@@ -290,10 +312,47 @@ describe('LatencyPanel', () => {
     expect(html).toContain('age at receipt 12 s');
     expect(html).toContain('next in 18 s');
     expect(html).toContain('<strong>304</strong>');
-    expect(html).toContain(
-      '<strong>3 price changes</strong> · 2 bodies · 9 not-modified · 1 failures',
-    );
+    expect(html).toContain('<strong>3 price changes</strong> · 2 polls · 1 failures');
     expect(html).toContain('Server → this browser');
+
+    // With the uncached price channel running, the bound is its interval and the panel shows it.
+    const withPrices = renderToString(
+      <LatencyPanel
+        dk={null}
+        fd={fdLiveMeta({ counters })}
+        browserLegSamples={[]}
+        clockOffsetMs={null}
+        clockRttMs={null}
+        browserNow={now}
+      />,
+    );
+    expect(withPrices).toContain('≤ 5.1 s'); // 5 s interval + 80 ms request
+    expect(withPrices).toContain('uncached price channel every 5 s');
+    expect(withPrices).toContain('Live price channel');
+    expect(withPrices).toContain('96 markets in 2 batches');
+    expect(withPrices).toContain('4 price updates');
+    expect(freshnessBoundMs(fdLiveMeta())).toBe(5_080);
+
+    // If it fails we fall back to the page, and the panel says the bound widened.
+    const unhealthy = fdLiveMeta({ counters });
+    const broken = renderToString(
+      <LatencyPanel
+        dk={null}
+        fd={fdMeta({
+          counters,
+          poll: {
+            ...unhealthy.poll!,
+            prices: { ...unhealthy.poll!.prices!, healthy: false, lastStatus: 503 },
+          },
+        })}
+        browserLegSamples={[]}
+        clockOffsetMs={null}
+        clockRttMs={null}
+        browserNow={now}
+      />,
+    );
+    expect(broken).toContain('unavailable (last status 503)');
+    expect(broken).toContain('≤ 31 s'); // back to CDN max-age + poll
 
     const bypass = renderToString(
       <LatencyPanel
