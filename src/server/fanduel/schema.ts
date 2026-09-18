@@ -76,5 +76,3 @@ export const FdPage = z
 
 export type FdRunnerT = z.infer<typeof FdRunner>;
 export type FdMarketT = z.infer<typeof FdMarket>;
-export type FdEventT = z.infer<typeof FdEvent>;
-export type FdPageT = z.infer<typeof FdPage>;

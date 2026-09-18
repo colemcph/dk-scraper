@@ -175,10 +175,8 @@ export const DkSocketFrame = z
   })
   .passthrough();
 
-export type DkParticipantT = z.infer<typeof DkParticipant>;
 export type DkEventT = z.infer<typeof DkEvent>;
 export type DkMarketT = z.infer<typeof DkMarket>;
 export type DkSelectionT = z.infer<typeof DkSelection>;
-export type DkLeagueSnapshotT = z.infer<typeof DkLeagueSnapshot>;
 export type DkUpdateFrameT = z.infer<typeof DkUpdateFrame>;
 export type DkSubscriptionPartialT = z.infer<typeof DkSubscriptionPartial>;

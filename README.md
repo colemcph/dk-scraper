@@ -179,20 +179,20 @@ Three clocks are involved (DraftKings', the server's, the browser's):
 - **Browser ↔ server skew** is estimated the same way from `/api/time`.
 - Reported per update: `dkToServerMs = receive − (createdTime − skew)` and `serverToBrowserMs = (browserReceive − browserOffset) − emittedAt`. p50/p95 over the last 1,000 updates are in the status strip; each entry in "Recent moves" shows its own breakdown.
 
-**Measured** (Toronto residential connection → DraftKings Ontario; in-play MLB because NFL lines don't move on a Friday night). DraftKings' own timestamps let the number be decomposed:
+**Measured on the deployed instance** (Render Ohio → DraftKings Ontario) during Thursday Night Football, Week 3 — 469 push updates across one in-play game and a pre-game board. DraftKings' own timestamps let the number be decomposed:
 
-| Leg                                                            | min   | p50            | p95     | n   |
-| -------------------------------------------------------------- | ----- | -------------- | ------- | --- |
-| Inside DraftKings: odds engine → their publish stage           | 7 ms  | 8 ms           | 8 ms    | 25  |
-| Inside DraftKings: publish stage → socket send (they batch)    | 12 ms | 30 ms          | ~430 ms | 25  |
-| Network: socket send → this server (skew-corrected)            | 12 ms | 15 ms          | 42 ms   | 25  |
-| **DraftKings engine → this server, quiet feed (1 live game)**  | 42 ms | **51 ms**      | 470 ms  | 25  |
-| **DraftKings engine → this server, busy feed (10 live games)** | —     | **224–307 ms** | 567 ms  | 99  |
-| Server → browser (same machine)                                | —     | 2 ms           | 5 ms    | 58  |
+| Leg                                                          | min   | p50        | p95      | n   |
+| ------------------------------------------------------------ | ----- | ---------- | -------- | --- |
+| Network: their socket publish → this server (skew-corrected) | 17 ms | **20 ms**  | —        | 469 |
+| Inside DraftKings: odds engine → socket publish              | —     | **632 ms** | —        | 469 |
+| **DraftKings engine → this server, all updates**             | —     | **651 ms** | 1 754 ms | 469 |
+| — of which, in-play                                          | —     | 503 ms     | 1 452 ms | 354 |
+| — of which, pre-game                                         | —     | 1 011 ms   | 3 005 ms | 115 |
+| Server → browser                                             | —     | 2–6 ms     | —        | —   |
 
-So on the push path a move is on screen **~50–300 ms** after DraftKings' engine stamps it; the tail is their batching, which their own website also waits for (and their client additionally throttles DOM updates to 500 ms). Our own processing is under 1 ms per frame.
+The shape is the point: **the network leg is 20 ms and essentially all of the rest — 632 of 651 ms — happens inside DraftKings**, between their odds engine stamping a price and their socket publishing it. That is their batching, and their own website waits for exactly the same publish (their client then throttles DOM updates by a further 500 ms). There is no faster public path; the only way to beat it would be a commercial feed.
 
-_(Numbers from the deployed Render instance will replace these once the Week 1 Sunday slate has run; the panel on the page always shows the live figures and the breakdown.)_
+Two things worth noting from this run. The skew estimate had converged to **+2 ms** (tracked from frames, RTT 35 ms) and the self-check held: **0 of 469 network samples came out negative**, which is what says the correction is honest rather than flattering. And pre-game updates were _slower_ than in-play ones that night (1 011 ms vs 503 ms) — the publish delay tracks how much work their engine is doing, not whether a given game is live, which is why the panel splits the two instead of claiming a single figure.
 
 Bounds in the other states:
 
@@ -396,7 +396,7 @@ So the adapter runs both: the **page is the structure** (which games exist, team
 ## Testing
 
 ```bash
-npm test               # vitest, 103 tests, < 2 s
+npm test               # vitest, 119 tests, < 2 s
 npm run chaos          # end-to-end resilience run against a mock DraftKings + mock FanDuel (~80 s, offline)
 npm run probe          # DraftKings: can this host reach the snapshot API and the socket?
 npm run probe:fanduel  # FanDuel: curl vs Node, one read, a 304, the CDN cache cycle; FD_CACHE_BYPASS=true adds origin reads
@@ -473,6 +473,20 @@ interface BookAdapter {
 Add the id to `BookId`, a `FeedManager` + `OddsStore` in `index.ts`, a badge colour — the hub, the API, the comparison and the UI are already keyed by book. FanDuel is the worked example of a poll-only adapter (`src/server/fanduel/`): ~120 lines of REST client, ~200 of normalizer, ~130 of scheduling and stats. The hard part remains **entity resolution**, and for the NFL it is done: any new book's spellings go into `teams.ts` aliases.
 
 ## Where AI and tooling would help this scale
+
+Betstamp tracks dozens of books across several leagues. Two books in one league already showed where that gets expensive, and it is not the transport — that part is nearly free once the shape is known. It is these:
+
+**Reconnaissance is the real per-book cost, and it is mechanisable.** The single biggest win in this project — FanDuel's uncached `getMarketPrices`, which took the freshness bound from ~31 s to ~5 s — came from reading a minified bundle and noticing `HighPriorityMarketPricing` next to `pollingConfig: { refreshTimeInMs: 5000 }`. That is exactly the kind of search an LLM does well and a person does slowly: fetch a book's bundles, find the API hosts, the auth scheme, the polling constants, and which endpoint the client uses when it actually cares about a price. The output is not code, it is a short brief a human then verifies against the live endpoint — which is how I used it here, and why the decision log records measurements rather than assertions.
+
+**Adapter scaffolding from a captured payload.** `BookAdapter` is deliberately small (`fetchSnapshot`, optional `subscribe`, optional `pollStats`). Given one real capture, generating the zod schema, the normalizer and a first test file is largely mechanical; the fixtures in this repo are already the input that would drive it. What must stay human is the mapping decisions that are not inferable from one sample — that `handicap: 0` means "no line" on a moneyline, that `result.type` is more reliable than the runner's name, that a re-keyed selection means a line move.
+
+**Schema-drift detection, which is where books break you quietly.** Every adapter already counts `invalidEntities` and validates leniently, so drift shows up as a number rather than an outage. At dozens of books that number wants watching automatically: a nightly diff of each book's payload shape against its fixture, opening a PR with the schema change and a failing test when a field moves. The trap this project hit is the instructive one — FanDuel silently truncates a 96-id batch to 80, with no error. Nothing about that is visible in a schema; it only appears if something asserts "I asked for 96 and got 96", which is now a test.
+
+**Entity resolution is the part that does not scale by hand.** `shared/teams.ts` is 32 NFL teams with a few aliases, and it works because NFL nicknames are unique. That property fails across leagues (MLB and NFL both have Giants) and across books that use local-language or abbreviated names. The durable version is a canonical entity store with per-book alias tables, where a fuzzy matcher proposes and a human confirms — with the rule this project already follows: **never guess**. An unresolved name is surfaced as unresolved, because comparing two different games is worse than comparing none.
+
+**Anomaly detection on the feeds themselves.** The counters here exist so a person can see health at a glance; at scale nobody is glancing. `priceChanges` per book per unit time is the signal worth alerting on — a book that silently stops moving looks identical to a quiet market until you compare it with its peers. The same applies to the drift counter (a snapshot finding changes the push feed never delivered) and to the freshness bound widening when a fast channel falls back.
+
+**Where I would not use it.** Anything whose correctness is a claim about the outside world: the latency figures, the cache behaviour, whether an endpoint is really uncached. Those are measurements, and this project's numbers are all reproducible with a script in the repo (`npm run probe`, `probe:fanduel`, `latency`, `chaos`) precisely so the claims can be checked rather than believed.
 
 ## Project layout
 

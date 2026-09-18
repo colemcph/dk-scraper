@@ -8,7 +8,7 @@ Short, dated records of the choices that shaped this project and the evidence be
 
 **Why:** the brief grades the _choice_ of data source and the ability to explain latency and protections. Findings that would have been invisible otherwise: the JSON-RPC socket protocol, `subscriptionPartials` in the snapshot, msgpack-by-default with a JSON option, U+2212 in `displayOdds`, the four timestamps on every frame.
 
-**Evidence:** `STRATEGY.md` (the pre-build strategy doc), `scripts/probe.ts`, `fixtures/dk-socket-frames.json`.
+**Evidence in the repo:** `scripts/probe.ts` (the reachability probe this became), `fixtures/dk-socket-frames.json` and `fixtures/dk-league-88808.json` (real captures from that evening, still what the tests run against).
 
 ## 2026-09-12 — Data source: snapshot API + delta socket (not scraping, not a third-party API)
 
